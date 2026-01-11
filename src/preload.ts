@@ -12,6 +12,9 @@ import { getModItemTemplate } from "./components/mods-item/modsItem";
 import { getAboutCategoryTemplate } from "./components/about-category/aboutCategory";
 import { applyUserAppearance, writeAppearance, setupAppearanceControls } from "./components/appearance-category/appearanceCategory";
 import { getTweaksIcon, writeTweaks, setupTweaksControls, applyTweaks, initPerformanceMode } from "./components/tweaks-category/tweaksCategory";
+import { handlePlusRoute, injectPlusNavButton, injectSettingsPlusBanner, resetPlusButtonInjection } from "./components/plus-page/plusPage";
+import { injectPearioButton, handlePearioRoute, resetPearioButtonInjection, initPartySystem } from "./components/peario-overlay/pearioOverlay";
+import partyService from "./utils/PartyService";
 import { writeStreamingPerformance, setupStreamingPerformanceControls } from "./components/streaming-performance/streamingPerformance";
 // NOTE: Theme UI removed - liquid-glass is locked
 // import { getDefaultThemeTemplate } from "./components/default-theme/defaultTheme";
@@ -172,6 +175,69 @@ function setObserverHandlerActive(id: string, active: boolean): void {
     }
 }
 
+
+// ============================================
+// NAVIGATION STATE MANAGER
+// Coordinates all navigation-related DOM manipulation to prevent flickering
+// ============================================
+interface NavigationState {
+    isTransitioning: boolean;
+    lastHash: string;
+    transitionStartTime: number;
+    pendingCallbacks: (() => void)[];
+    transitionTimeout: ReturnType<typeof setTimeout> | null;
+}
+
+const navState: NavigationState = {
+    isTransitioning: false,
+    lastHash: '',
+    transitionStartTime: 0,
+    pendingCallbacks: [],
+    transitionTimeout: null
+};
+
+function startNavTransition(): void {
+    // Clear any existing transition timeout
+    if (navState.transitionTimeout) {
+        clearTimeout(navState.transitionTimeout);
+    }
+
+    navState.isTransitioning = true;
+    navState.transitionStartTime = Date.now();
+    navState.lastHash = location.hash;
+
+    // Signal to CSS/plugins that we're transitioning
+    document.body.classList.add('streamgo-nav-transitioning');
+
+    // Auto-end transition after duration (safety fallback)
+    navState.transitionTimeout = setTimeout(() => {
+        endNavTransition();
+    }, TIMEOUTS.NAV_TRANSITION_DURATION + 100);
+}
+
+function endNavTransition(): void {
+    if (!navState.isTransitioning) return;
+
+    navState.isTransitioning = false;
+    document.body.classList.remove('streamgo-nav-transitioning');
+
+    // Clear timeout if still active
+    if (navState.transitionTimeout) {
+        clearTimeout(navState.transitionTimeout);
+        navState.transitionTimeout = null;
+    }
+
+    // Execute all pending callbacks
+    const callbacks = navState.pendingCallbacks;
+    navState.pendingCallbacks = [];
+    callbacks.forEach(cb => {
+        try {
+            cb();
+        } catch (e) {
+            logger.error(`Error executing nav transition callback: ${e}`);
+        }
+    });
+}
 
 // ============================================
 // ASYNC FILE SYSTEM UTILITIES WITH CACHING
@@ -399,6 +465,10 @@ function initializeCoreFeatures(): void {
     // Initialize performance mode (applies body class based on saved preference)
     initPerformanceMode();
 
+    // Initialize party system (WebSocket sync for watch parties)
+    initPartySystem();
+    setupPartyListeners();
+
     // Load enabled plugins asynchronously (non-blocking) - only once
     if (!pluginsLoaded) {
         pluginsLoaded = true;
@@ -430,6 +500,9 @@ window.addEventListener("load", async () => {
 
     // Reload server configuration
     reloadServer();
+
+    // Check and install bundled addons on first login (silently)
+    checkAndInstallBundledAddons();
 
     const checkUpdates = localStorage.getItem(STORAGE_KEYS.CHECK_UPDATES_ON_STARTUP);
     if (checkUpdates === "true") {
@@ -476,6 +549,12 @@ window.addEventListener("load", async () => {
     // Initialize nav bar fixes (rename Board to Home, ensure elements visible)
     initNavBarFixes();
 
+    // Inject Plus nav button in top bar
+    injectPlusNavButton();
+
+    // Inject Peario "Watch with Me" button on detail pages
+    injectPearioButton();
+
     // Get transparency status once and reuse
     const isTransparencyEnabled = await getTransparencyStatus();
 
@@ -497,6 +576,9 @@ window.addEventListener("load", async () => {
 
     // Handle navigation changes
     window.addEventListener("hashchange", async () => {
+        // Start coordinated navigation transition to prevent flickering
+        startNavTransition();
+
         if (isTransparencyEnabled) {
             addTitleBar();
         }
@@ -516,6 +598,9 @@ window.addEventListener("load", async () => {
 
             // Save stream info for Quick Resume (Continue Watching)
             saveCurrentStreamInfo();
+
+            // Sync stream to party if user is party owner
+            syncStreamToParty();
         } else {
             // Cleanup player overlay and video filter when leaving player page
             cleanupPlayerOverlay();
@@ -529,12 +614,23 @@ window.addEventListener("load", async () => {
             }
         }
 
-        // Reinject icon on navigation (in case theme is active)
-        // Use setTimeout to ensure DOM has updated after navigation
+        // Icon injection is now handled by initNavBarFixes() handleNavFixes callback
+        // which runs after NAV_TRANSITION_DURATION to ensure DOM has settled
+        // Only inject intro logo here (separate concern from nav bar icons)
         setTimeout(() => {
-            injectAppIconInGlassTheme();
             injectIntroLogo();
         }, TIMEOUTS.NAVIGATION_DEBOUNCE);
+
+        // Handle Plus page route - dedicated page for StreamGo settings
+        if (handlePlusRoute()) {
+            logger.info("[Navigation] Plus page route handled");
+            return;
+        }
+
+        // Handle Peario overlay - close when navigating away, inject button on detail pages
+        handlePearioRoute();
+        resetPearioButtonInjection();
+        injectPearioButton();
 
         // Clean up event listeners when leaving settings
         if (!location.href.includes("#/settings")) {
@@ -676,6 +772,9 @@ window.addEventListener("load", async () => {
         injectCollapsibleStyles();
         injectAboutSectionStyles();
         injectPluginGroupStyles();
+
+        // Inject banner pointing to the new Plus page
+        injectSettingsPlusBanner();
 
         // Setup collapsible handlers - ALWAYS called to re-attach handlers after navigation
         // The handler functions check for data-*-handler attributes to avoid duplicates
@@ -836,23 +935,171 @@ function applyUserTheme(): void {
 function refreshThemePosition(): void {
     const themeElement = document.getElementById("activeTheme") as HTMLLinkElement;
     if (!themeElement) return;
-
-    // Store the href before removing
-    const href = themeElement.href;
-
-    // Remove from current position
-    themeElement.remove();
-
-    // Create a fresh link element and append to end of head
-    const newThemeElement = document.createElement('link');
-    newThemeElement.id = "activeTheme";
-    newThemeElement.rel = "stylesheet";
-    newThemeElement.href = href;
-
-    // Append to end of head (highest CSS priority)
-    document.head.appendChild(newThemeElement);
-
+    // appendChild on existing element moves it to end (no remove/recreate needed)
+    document.head.appendChild(themeElement);
     logger.info("Theme position refreshed - moved to end of head for CSS priority");
+}
+
+// Bundled Stremio addons to auto-install on first login
+const BUNDLED_ADDONS = [
+    'https://torrentio.strem.fun/manifest.json',
+    'https://addon.peario.xyz/manifest.json'
+];
+
+/**
+ * Silently install bundled Stremio addons on first login
+ * Only runs once when user logs in for the first time
+ */
+async function installBundledAddons(): Promise<void> {
+    try {
+        // Check if already installed
+        const alreadyInstalled = localStorage.getItem(STORAGE_KEYS.BUNDLED_ADDONS_INSTALLED) === 'true';
+        if (alreadyInstalled) {
+            return;
+        }
+
+        // Get auth key from profile (user must be logged in)
+        const profileStr = localStorage.getItem('profile');
+        if (!profileStr) {
+            return; // User not logged in yet
+        }
+
+        let profile;
+        try {
+            profile = JSON.parse(profileStr);
+        } catch {
+            return; // Invalid profile data
+        }
+
+        const authKey = profile?.auth?.key;
+        if (!authKey) {
+            return; // User not authenticated
+        }
+
+        // Get current addons from Stremio API
+        const getResponse = await fetch('https://api.strem.io/api/addonCollectionGet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'AddonCollectionGet', authKey })
+        });
+
+        const getData = await getResponse.json();
+        if (!getData.result || !getData.result.addons) {
+            logger.warn('Failed to fetch current addons');
+            return;
+        }
+
+        const existingAddons = getData.result.addons || [];
+        const existingUrls = new Set(
+            existingAddons.map((addon: any) => addon.transportUrl || addon.manifestUrl)
+        );
+
+        // Filter out addons that are already installed
+        const addonsToInstall = BUNDLED_ADDONS.filter(url => !existingUrls.has(url));
+        
+        if (addonsToInstall.length === 0) {
+            // All addons already installed, mark as done
+            localStorage.setItem(STORAGE_KEYS.BUNDLED_ADDONS_INSTALLED, 'true');
+            logger.info('All bundled addons already installed');
+            return;
+        }
+
+        // Fetch manifests for new addons
+        const newAddons = [];
+        for (const addonUrl of addonsToInstall) {
+            try {
+                const manifestResponse = await fetch(addonUrl);
+                if (!manifestResponse.ok) {
+                    logger.warn(`Failed to fetch manifest for ${addonUrl}`);
+                    continue;
+                }
+                const manifest = await manifestResponse.json();
+                
+                newAddons.push({
+                    transportUrl: addonUrl,
+                    manifestUrl: addonUrl,
+                    manifest: manifest
+                });
+                logger.info(`Fetched manifest for ${manifest.name || addonUrl}`);
+            } catch (error) {
+                logger.warn(`Error fetching manifest for ${addonUrl}:`, error);
+            }
+        }
+
+        if (newAddons.length === 0) {
+            logger.warn('No new addons to install');
+            return;
+        }
+
+        // Combine existing addons with new ones
+        const updatedAddons = [...existingAddons, ...newAddons];
+
+        // Install via Stremio API (silently, no notifications)
+        const setResponse = await fetch('https://api.strem.io/api/addonCollectionSet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'AddonCollectionSet',
+                authKey: authKey,
+                addons: updatedAddons
+            })
+        });
+
+        const setData = await setResponse.json();
+        
+        if (setData.result?.success) {
+            localStorage.setItem(STORAGE_KEYS.BUNDLED_ADDONS_INSTALLED, 'true');
+            logger.info(`Successfully installed ${newAddons.length} bundled addon(s) silently`);
+            // Don't reload - install silently without disrupting user experience
+        } else {
+            logger.warn('Failed to install bundled addons:', setData.result?.error);
+        }
+    } catch (error) {
+        logger.error('Error installing bundled addons:', error);
+    }
+}
+
+/**
+ * Check for user login and install bundled addons on first login
+ * Polls until user logs in, then installs once
+ */
+function checkAndInstallBundledAddons(): void {
+    const alreadyInstalled = localStorage.getItem(STORAGE_KEYS.BUNDLED_ADDONS_INSTALLED) === 'true';
+    if (alreadyInstalled) {
+        return;
+    }
+
+    // Check immediately first
+    installBundledAddons().catch(err => {
+        logger.error('Error in initial bundled addon check:', err);
+    });
+
+    // If user not logged in yet, poll every 2 seconds (max 60 seconds = 30 checks)
+    let checkCount = 0;
+    const maxChecks = 30;
+    
+    const checkInterval = setInterval(async () => {
+        checkCount++;
+        
+        const profileStr = localStorage.getItem('profile');
+        if (profileStr) {
+            try {
+                const profile = JSON.parse(profileStr);
+                if (profile?.auth?.key) {
+                    // User is logged in, install addons
+                    clearInterval(checkInterval);
+                    await installBundledAddons();
+                }
+            } catch {
+                // Invalid profile, continue checking
+            }
+        }
+
+        // Stop checking after max attempts
+        if (checkCount >= maxChecks) {
+            clearInterval(checkInterval);
+        }
+    }, 2000);
 }
 
 async function loadEnabledPlugins(): Promise<void> {
@@ -1174,11 +1421,20 @@ function injectAppIconInGlassTheme(): void {
 
     // Function to inject icon into a navigation bar element
     const injectIconIntoNavBar = (navBar: Element): void => {
-        // Check if icon already exists in this nav bar
+        // Check if icon already exists in this nav bar AND is still in the document
         const existingIcon = navBar.querySelector('.app-icon-glass-theme');
-        if (existingIcon) {
-            return; // Icon already exists, no need to re-inject
+        if (existingIcon && document.body.contains(existingIcon)) {
+            return; // Icon exists and is in DOM, no need to re-inject
         }
+
+        // Clean up any orphaned icons that might be in document but not in the main nav bar
+        const orphanedIcons = document.querySelectorAll('.app-icon-glass-theme');
+        orphanedIcons.forEach(icon => {
+            // Only remove if not inside main-nav-bars-container
+            if (!icon.closest('[class*="main-nav-bars-container"]')) {
+                icon.remove();
+            }
+        });
 
         // Get the icon path - images folder is in app root
         // Use same pattern as theme loading: check if packaged
@@ -1312,38 +1568,103 @@ function initNavBarFixes(): void {
             });
         }
 
-        // Also check for nested text nodes
+        // Also check for nested text nodes using TreeWalker (more efficient than querySelectorAll('*'))
         const allNavLinks = document.querySelectorAll('[class*="vertical-nav-bar"] a, [class*="horizontal-nav-bar"] a');
         allNavLinks.forEach(link => {
-            const textNodes = Array.from(link.childNodes).filter(node => node.nodeType === Node.TEXT_NODE);
-            textNodes.forEach(node => {
+            const walker = document.createTreeWalker(link, NodeFilter.SHOW_TEXT, null);
+            let node;
+            while ((node = walker.nextNode())) {
                 if (node.textContent?.trim() === 'Board') {
                     node.textContent = 'Home';
                 }
-            });
-            // Check all child elements for "Board" text
-            link.querySelectorAll('*').forEach(child => {
-                if (child.childNodes.length === 1 && child.childNodes[0].nodeType === Node.TEXT_NODE) {
-                    if (child.textContent?.trim() === 'Board') {
-                        child.textContent = 'Home';
-                    }
-                }
-            });
+            }
         });
     };
 
+    // Store buttons-container HTML for recreation when Stremio doesn't create it
+    let storedButtonsContainerHTML: string | null = null;
+    let storedButtonsContainerClasses: string | null = null;
+
     // Function to ensure buttons-container (profile/fullscreen) is visible
     const ensureNavElementsVisible = (): void => {
-        // Find all buttons-container elements in horizontal nav bars
-        const buttonsContainers = document.querySelectorAll('[class*="horizontal-nav-bar"] [class*="buttons-container"]');
-        buttonsContainers.forEach(container => {
+        // Find ALL buttons-containers in the document (main nav or route-specific)
+        const allButtonsContainers = document.querySelectorAll('[class*="buttons-container"]');
+
+        // Store the first valid buttons-container we find (for recreation on other pages)
+        if (!storedButtonsContainerHTML) {
+            allButtonsContainers.forEach(container => {
+                if (container.innerHTML && container.innerHTML.trim().length > 0) {
+                    storedButtonsContainerHTML = container.innerHTML;
+                    storedButtonsContainerClasses = container.className;
+                    logger.info("Stored buttons-container HTML for recreation on other pages");
+                }
+            });
+        }
+
+        // IMPORTANT: Target only the MAIN nav bar, not secondary nav bars in route content
+        const mainNavContainer = document.querySelector('[class*="main-nav-bars-container"]');
+        if (!mainNavContainer) return;
+
+        const mainHorizontalNav = mainNavContainer.querySelector('[class*="horizontal-nav-bar"]');
+        if (!mainHorizontalNav) return;
+
+        // Find buttons-container in main nav bar
+        let buttonsContainer = mainHorizontalNav.querySelector('[class*="buttons-container"]');
+
+        // Remove any old cloned containers before potentially adding a new one
+        const oldClones = mainHorizontalNav.querySelectorAll('.streamgo-buttons-clone');
+        oldClones.forEach(clone => clone.remove());
+
+        // If buttons-container doesn't exist in main nav, try to find one elsewhere or recreate
+        if (!buttonsContainer) {
+            // First, check if there's one in route content to clone
+            const routeButtonsContainer = document.querySelector(
+                '[class*="route-content"] [class*="horizontal-nav-bar"] [class*="buttons-container"]'
+            );
+
+            if (routeButtonsContainer && routeButtonsContainer.innerHTML.trim().length > 0) {
+                // Clone from route content
+                const clonedContainer = routeButtonsContainer.cloneNode(true) as HTMLElement;
+                clonedContainer.classList.add('streamgo-buttons-clone');
+                mainHorizontalNav.appendChild(clonedContainer);
+                buttonsContainer = clonedContainer;
+                logger.info("Cloned buttons-container from route-content to main nav bar");
+            } else if (storedButtonsContainerHTML) {
+                // Recreate from stored HTML
+                const recreatedContainer = document.createElement('div');
+                recreatedContainer.className = storedButtonsContainerClasses || 'buttons-container';
+                recreatedContainer.classList.add('streamgo-buttons-clone');
+                recreatedContainer.innerHTML = storedButtonsContainerHTML;
+                mainHorizontalNav.appendChild(recreatedContainer);
+                buttonsContainer = recreatedContainer;
+                logger.info("Recreated buttons-container from stored HTML in main nav bar");
+            }
+        }
+
+        // Ensure buttons-container visibility in main nav with aggressive inline styles
+        if (buttonsContainer) {
+            const el = buttonsContainer as HTMLElement;
+            el.style.cssText = `
+                display: flex !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                position: absolute !important;
+                right: 16px !important;
+                top: 50% !important;
+                transform: translateY(-50%) !important;
+                z-index: 100 !important;
+                align-items: center !important;
+                gap: 8px !important;
+            `;
+        }
+
+        // Also ensure any buttons-containers in other nav bars are visible
+        allButtonsContainers.forEach(container => {
             const el = container as HTMLElement;
-            // Force visibility
             if (el.style.display === 'none' || el.style.visibility === 'hidden') {
                 el.style.display = '';
                 el.style.visibility = '';
             }
-            // Ensure it has proper z-index
             if (!el.style.zIndex || parseInt(el.style.zIndex) < 100) {
                 el.style.zIndex = '100';
             }
@@ -1353,10 +1674,9 @@ function initNavBarFixes(): void {
         const appIcons = document.querySelectorAll('.app-icon-glass-theme');
         appIcons.forEach(icon => {
             const el = icon as HTMLElement;
-            if (el.style.display === 'none' || el.style.visibility === 'hidden') {
-                el.style.display = '';
-                el.style.visibility = '';
-            }
+            el.style.display = 'block';
+            el.style.visibility = 'visible';
+            el.style.opacity = '0.7';
         });
     };
 
@@ -1369,20 +1689,105 @@ function initNavBarFixes(): void {
         registerObserverHandler('nav-fixes', () => {
             renameBoardToHome();
             ensureNavElementsVisible();
+            // Also check Plus button on DOM changes
+            if (!document.getElementById('plus-nav-button')) {
+                injectPlusNavButton();
+            }
         });
         navFixObserverActive = true;
     }
 
-    // Also run on hashchange to catch navigation
+    // Set up observer for Peario button on detail pages
+    registerObserverHandler('peario-button', () => {
+        // Only inject on detail pages
+        if (location.hash.includes('#/detail/')) {
+            if (!document.getElementById('peario-watch-button')) {
+                injectPearioButton();
+            }
+        }
+    });
+
+    // Main navigation routes that should show blur loading
+    const mainNavRoutes = ['#/', '#/discover', '#/library', '#/calendar', '#/addons', '#/settings'];
+
+    // Check if current route is a main nav page
+    const isMainNavRoute = (hash: string): boolean => {
+        return mainNavRoutes.some(route => hash === route || hash.startsWith(route + '/') || hash.startsWith(route + '?'));
+    };
+
+    // Create page loading blur overlay (for Glass theme)
+    const createLoadingOverlay = (): HTMLElement => {
+        let overlay = document.getElementById('streamgo-page-loader');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'streamgo-page-loader';
+            document.body.appendChild(overlay);
+        }
+        return overlay;
+    };
+
+    // Show loading blur overlay
+    const showLoadingOverlay = (): void => {
+        const overlay = createLoadingOverlay();
+        // Force reflow for smooth animation
+        overlay.offsetHeight;
+        overlay.classList.remove('fade-out');
+        overlay.classList.add('active');
+    };
+
+    // Hide loading blur overlay with fade
+    const hideLoadingOverlay = (): void => {
+        const overlay = document.getElementById('streamgo-page-loader');
+        if (overlay && overlay.classList.contains('active')) {
+            overlay.classList.add('fade-out');
+            setTimeout(() => {
+                overlay.classList.remove('active', 'fade-out');
+            }, 350);
+        }
+    };
+
+    // Also run on hashchange to catch navigation - INSTANT rebuild with animation
     const handleNavFixes = (): void => {
-        setTimeout(() => {
+        // Reset Plus button injection attempts at start of each navigation
+        resetPlusButtonInjection();
+
+        // Only show blur loading for main nav routes (Home, Discover, Library, Calendar, Addons, Settings)
+        const currentHash = location.hash || '#/';
+        if (isMainNavRoute(currentHash)) {
+            showLoadingOverlay();
+        }
+
+        // Add loading class for fade-in animation
+        const mainNav = document.querySelector('[class*="main-nav-bars-container"]');
+        if (mainNav) {
+            mainNav.classList.add('streamgo-nav-loading');
+        }
+
+        // Run ALL fixes as fast as possible to rebuild nav bar instantly
+        const runAllFixes = (): void => {
             renameBoardToHome();
             ensureNavElementsVisible();
-        }, 100);
+            injectAppIconInGlassTheme();
+            injectPlusNavButton();
+        };
+
+        // Run fixes with strategic timing (reduced from 11 calls to 3 for performance)
+        runAllFixes();
+        requestAnimationFrame(runAllFixes);
+        setTimeout(runAllFixes, 100);
+
+        // Remove loading states after fixes complete
         setTimeout(() => {
-            renameBoardToHome();
-            ensureNavElementsVisible();
-        }, 500);
+            if (mainNav) {
+                mainNav.classList.remove('streamgo-nav-loading');
+            }
+            runAllFixes();
+        }, 150);
+
+        // Hide blur overlay after extra 500ms delay (total ~650ms)
+        setTimeout(() => {
+            hideLoadingOverlay();
+        }, 650);
     };
 
     // Remove any existing listener before adding (prevent duplicates)
@@ -2358,6 +2763,77 @@ async function saveCurrentStreamInfo(): Promise<void> {
         logger.info(`[QuickResume] Saved stream for ${storageKey}: hash=${streamHash}`);
     } catch (err) {
         logger.warn(`[QuickResume] Error saving stream info: ${err}`);
+    }
+}
+
+/**
+ * Setup party event listeners
+ */
+let lastSyncedStreamUrl: string | null = null;
+
+function setupPartyListeners(): void {
+    // Listen for room sync events (includes stream updates)
+    partyService.on('sync', (room: any) => {
+        // Don't navigate if we're the owner (we initiated this)
+        if (partyService.isOwner) {
+            return;
+        }
+
+        // Check if stream URL changed
+        const streamUrl = room?.stream?.url;
+        if (streamUrl && streamUrl !== lastSyncedStreamUrl && streamUrl !== location.hash) {
+            logger.info('[Party] Received stream sync from owner:', streamUrl);
+            console.log('[Party] Received stream sync from owner:', streamUrl);
+
+            lastSyncedStreamUrl = streamUrl;
+
+            // Navigate to the synced stream
+            logger.info('[Party] Navigating to synced stream:', streamUrl);
+            console.log('[Party] Navigating to synced stream:', streamUrl);
+            location.hash = streamUrl;
+        }
+    });
+}
+
+/**
+ * Sync current stream to party members
+ * Only the party owner can trigger stream sync
+ */
+function syncStreamToParty(): void {
+    try {
+        // Check if user is in a party and is the owner
+        if (!partyService.connected || !partyService.room || !partyService.isOwner) {
+            return;
+        }
+
+        logger.info('[Party] Owner navigated to player - syncing stream...');
+        console.log('[Party] Owner navigated to player - syncing stream...');
+
+        // Extract stream info from URL
+        // Format: #/player/{videoId}/{streamHash}/{episodeId}
+        const hash = location.hash;
+        const playerMatch = hash.match(/#\/player\/([^/]+)\/([^/]+)(?:\/(.+))?/);
+
+        if (!playerMatch) {
+            logger.warn('[Party] Could not parse player URL for sync');
+            return;
+        }
+
+        const [, videoId, streamHash, episodeId] = playerMatch;
+
+        // Update room stream info (will be broadcast to all users)
+        partyService.send('room.updateStream', {
+            url: hash,
+            videoId,
+            streamHash,
+            episodeId: episodeId || null
+        });
+
+        logger.info('[Party] Stream updated in party:', { videoId, streamHash, episodeId });
+        console.log('[Party] Stream updated in party:', { videoId, streamHash, episodeId });
+    } catch (error) {
+        logger.error('[Party] Error syncing stream:', error);
+        console.error('[Party] Error syncing stream:', error);
     }
 }
 

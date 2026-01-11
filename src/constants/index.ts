@@ -43,6 +43,18 @@ export const SELECTORS = {
 
     // Navigation
     HORIZONTAL_NAV: '.horizontal-nav-bar-container-Y_zvK',   // Top navigation bar
+    HORIZONTAL_NAV_GENERIC: '[class*="horizontal-nav-bar-container"]', // Generic selector for top nav
+
+    // Plus page
+    PLUS_PAGE_CONTAINER: '#plus-page-container',
+    PLUS_SIDEBAR: '#plus-sidebar',
+    PLUS_CONTENT: '#plus-content',
+    PLUS_NAV_BUTTON: '#plus-nav-button',
+
+    // Peario overlay
+    PEARIO_WATCH_BUTTON: '#peario-watch-button',
+    PEARIO_OVERLAY: '#peario-overlay',
+    ACTION_BUTTONS_CONTAINER: '[class*="action-buttons-container"]',
 } as const;
 
 // CSS Classes used for styling
@@ -93,6 +105,8 @@ export const STORAGE_KEYS = {
     VIDEO_FILTER_ENABLED: 'videoFilterEnabled',
     // Streaming performance settings
     STREAMING_PROFILE: 'streamingProfile',
+    // Bundled addons installation tracking
+    BUNDLED_ADDONS_INSTALLED: 'streamgo_bundled_addons_installed',
 } as const;
 
 // IPC Channel names for main <-> renderer communication
@@ -146,6 +160,7 @@ export const URLS = {
     VERSION_CHECK: 'https://github.com/Bo0ii/StreamGo/raw/main/version',
     RELEASES_API: 'https://api.github.com/repos/Bo0ii/StreamGo/releases/latest',
     RELEASES_PAGE: 'https://github.com/Bo0ii/StreamGo/releases/latest',
+    PEARIO_BASE: 'https://peario.xyz',
 } as const;
 
 // server.js (Stremio streaming server) Download URL
@@ -199,6 +214,8 @@ export const TIMEOUTS = {
     ICON_RETRY_DELAY: 100,
     ICON_MUTATION_DEBOUNCE: 50,
     SCROLL_STATE_DELAY: 200,
+    // Navigation transition duration for coordinated fixes
+    NAV_TRANSITION_DURATION: 300,
 } as const;
 
 // Default values for player settings

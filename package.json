@@ -33,6 +33,7 @@
 		"typescript": "^5.7.2"
 	},
 	"dependencies": {
+		"@supabase/supabase-js": "^2.90.1",
 		"@xhayper/discord-rpc": "^1.2.1",
 		"discord-api-types": "^0.37.119",
 		"electron-prompt": "^1.7.0",
@@ -63,6 +64,12 @@
 		"productName": "StreamGo",
 		"asar": true,
 		"icon": "images/icons/main.png",
+		"protocols": [
+			{
+				"name": "stremio",
+				"schemes": ["stremio"]
+			}
+		],
 		"directories": {
 			"output": "release-builds"
 		},
@@ -75,22 +82,30 @@
 			{
 				"from": "plugins",
 				"to": "plugins",
-				"filter": ["**/*"]
+				"filter": [
+					"**/*"
+				]
 			},
 			{
 				"from": "themes",
 				"to": "themes",
-				"filter": ["**/*"]
+				"filter": [
+					"**/*"
+				]
 			},
 			{
 				"from": "images",
 				"to": "images",
-				"filter": ["**/*"]
+				"filter": [
+					"**/*"
+				]
 			},
 			{
 				"from": "sql",
 				"to": "sql",
-				"filter": ["**/*"]
+				"filter": [
+					"**/*"
+				]
 			}
 		],
 		"publish": {
@@ -122,7 +137,9 @@
 				{
 					"from": "stremio-service/stremio-service-windows",
 					"to": "stremio-service",
-					"filter": ["**/*"]
+					"filter": [
+						"**/*"
+					]
 				}
 			]
 		},
@@ -139,7 +156,9 @@
 				{
 					"from": "stremio-service/stremio-service-macos",
 					"to": "stremio-service",
-					"filter": ["**/*"]
+					"filter": [
+						"**/*"
+					]
 				}
 			]
 		},
@@ -150,7 +169,9 @@
 				{
 					"from": "stremio-service/stremio-service-linux",
 					"to": "stremio-service",
-					"filter": ["**/*"]
+					"filter": [
+						"**/*"
+					]
 				}
 			]
 		}

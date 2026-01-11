@@ -8,6 +8,8 @@
 --   - profiles table (user profiles)
 --   - profile_watchlist table (per-profile watchlists)
 --   - profile_continue_watching table (per-profile watch progress)
+--   - profile_favorites table (per-profile favorites)
+--   - profile_settings table (per-profile settings)
 --   - Row Level Security policies
 --   - Indexes for performance
 --   - Triggers for auto-updating timestamps
@@ -24,6 +26,8 @@ CREATE TABLE IF NOT EXISTS profiles (
     name TEXT NOT NULL,                             -- Profile display name
     avatar_id TEXT DEFAULT 'gradient-purple',       -- Predefined avatar identifier
     is_active BOOLEAN DEFAULT false,                -- Currently active profile flag
+    is_main BOOLEAN DEFAULT false,                  -- Main profile flag (first profile created)
+    sync_version INTEGER DEFAULT 0,                 -- For conflict resolution
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
     deleted_at TIMESTAMPTZ                          -- Soft delete timestamp (null = active)
@@ -38,6 +42,7 @@ CREATE TABLE IF NOT EXISTS profile_watchlist (
     title TEXT,                                     -- Cached title for display
     poster TEXT,                                    -- Cached poster URL
     status TEXT DEFAULT 'watching',                 -- watching, completed, plan_to_watch, dropped
+    sync_version INTEGER DEFAULT 0,                 -- For conflict resolution
     added_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
     deleted_at TIMESTAMPTZ,                         -- Soft delete timestamp
@@ -58,10 +63,35 @@ CREATE TABLE IF NOT EXISTS profile_continue_watching (
     season INTEGER,                                 -- Season number (for series)
     episode INTEGER,                                -- Episode number (for series)
     stream_hash TEXT,                               -- Last used stream hash for quick resume
+    sync_version INTEGER DEFAULT 0,                 -- For conflict resolution
     last_watched_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
     deleted_at TIMESTAMPTZ,                         -- Soft delete timestamp
     UNIQUE(profile_id, content_id, video_id)
+);
+
+-- Favorites table: stores favorited content per profile
+CREATE TABLE IF NOT EXISTS profile_favorites (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    content_id TEXT NOT NULL,                       -- Stremio content ID
+    content_type TEXT NOT NULL,                     -- 'movie' or 'series'
+    title TEXT,                                     -- Cached title for display
+    poster TEXT,                                    -- Cached poster URL
+    added_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    deleted_at TIMESTAMPTZ,                         -- Soft delete timestamp
+    UNIQUE(profile_id, content_id)
+);
+
+-- Settings table: stores per-profile settings
+CREATE TABLE IF NOT EXISTS profile_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    setting_key TEXT NOT NULL,                      -- Setting name
+    setting_value JSONB,                            -- Setting value as JSON
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(profile_id, setting_key)
 );
 
 -- ============================================
@@ -83,6 +113,15 @@ CREATE INDEX IF NOT EXISTS idx_continue_profile_id ON profile_continue_watching(
 CREATE INDEX IF NOT EXISTS idx_continue_updated_at ON profile_continue_watching(updated_at);
 CREATE INDEX IF NOT EXISTS idx_continue_last_watched ON profile_continue_watching(profile_id, last_watched_at DESC) WHERE deleted_at IS NULL;
 
+-- Favorites indexes
+CREATE INDEX IF NOT EXISTS idx_favorites_profile_id ON profile_favorites(profile_id);
+CREATE INDEX IF NOT EXISTS idx_favorites_updated_at ON profile_favorites(updated_at);
+CREATE INDEX IF NOT EXISTS idx_favorites_content ON profile_favorites(profile_id, content_id) WHERE deleted_at IS NULL;
+
+-- Settings indexes
+CREATE INDEX IF NOT EXISTS idx_settings_profile_id ON profile_settings(profile_id);
+CREATE INDEX IF NOT EXISTS idx_settings_key ON profile_settings(profile_id, setting_key);
+
 -- ============================================
 -- ROW LEVEL SECURITY (RLS)
 -- ============================================
@@ -91,11 +130,15 @@ CREATE INDEX IF NOT EXISTS idx_continue_last_watched ON profile_continue_watchin
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profile_watchlist ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profile_continue_watching ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profile_favorites ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profile_settings ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies if they exist (for re-running script)
 DROP POLICY IF EXISTS "Access own profiles" ON profiles;
 DROP POLICY IF EXISTS "Access own watchlist" ON profile_watchlist;
 DROP POLICY IF EXISTS "Access own continue watching" ON profile_continue_watching;
+DROP POLICY IF EXISTS "Access own favorites" ON profile_favorites;
+DROP POLICY IF EXISTS "Access own settings" ON profile_settings;
 
 -- Profiles policy: users can only access profiles matching their account_id
 -- The account_id is passed via the x-account-id header
@@ -118,6 +161,22 @@ CREATE POLICY "Access own continue watching" ON profile_continue_watching FOR AL
         AND profiles.account_id = current_setting('request.headers', true)::json->>'x-account-id'
     ));
 
+-- Favorites policy: users can only access favorites for their profiles
+CREATE POLICY "Access own favorites" ON profile_favorites FOR ALL
+    USING (EXISTS (
+        SELECT 1 FROM profiles
+        WHERE profiles.id = profile_favorites.profile_id
+        AND profiles.account_id = current_setting('request.headers', true)::json->>'x-account-id'
+    ));
+
+-- Settings policy: users can only access settings for their profiles
+CREATE POLICY "Access own settings" ON profile_settings FOR ALL
+    USING (EXISTS (
+        SELECT 1 FROM profiles
+        WHERE profiles.id = profile_settings.profile_id
+        AND profiles.account_id = current_setting('request.headers', true)::json->>'x-account-id'
+    ));
+
 -- ============================================
 -- TRIGGERS
 -- ============================================
@@ -135,6 +194,8 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS profiles_updated_at ON profiles;
 DROP TRIGGER IF EXISTS watchlist_updated_at ON profile_watchlist;
 DROP TRIGGER IF EXISTS continue_watching_updated_at ON profile_continue_watching;
+DROP TRIGGER IF EXISTS favorites_updated_at ON profile_favorites;
+DROP TRIGGER IF EXISTS settings_updated_at ON profile_settings;
 
 -- Create triggers for auto-updating timestamps
 CREATE TRIGGER profiles_updated_at
@@ -149,6 +210,16 @@ CREATE TRIGGER watchlist_updated_at
 
 CREATE TRIGGER continue_watching_updated_at
     BEFORE UPDATE ON profile_continue_watching
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER favorites_updated_at
+    BEFORE UPDATE ON profile_favorites
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER settings_updated_at
+    BEFORE UPDATE ON profile_settings
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at();
 

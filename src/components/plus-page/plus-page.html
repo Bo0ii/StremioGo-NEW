@@ -1,0 +1,607 @@
+<div id="plus-page-container" class="plus-page-container">
+    <!-- Top Navigation Bar -->
+    <div class="plus-topbar">
+        <div class="plus-topbar-left">
+            <button id="plus-back-btn" class="plus-topbar-btn" title="Go Back">
+                <svg viewBox="0 0 24 24" width="20" height="20" style="fill: currentColor;">
+                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+            </button>
+            <div class="plus-topbar-title">
+                <svg viewBox="0 0 24 24" width="20" height="20" style="fill: var(--accent-color, #7b5bf5);">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
+                </svg>
+                <span>StreamGo Plus</span>
+            </div>
+        </div>
+        <div class="plus-topbar-nav">
+            <a href="#/" class="plus-topbar-link" data-nav="home">
+                <svg viewBox="0 0 24 24" width="18" height="18" style="fill: currentColor;">
+                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+                </svg>
+                <span>Home</span>
+            </a>
+            <a href="#/discover" class="plus-topbar-link" data-nav="discover">
+                <svg viewBox="0 0 24 24" width="18" height="18" style="fill: currentColor;">
+                    <path d="M12 10.9c-.61 0-1.1.49-1.1 1.1s.49 1.1 1.1 1.1c.61 0 1.1-.49 1.1-1.1s-.49-1.1-1.1-1.1zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm2.19 12.19L6 18l3.81-8.19L18 6l-3.81 8.19z"/>
+                </svg>
+                <span>Discover</span>
+            </a>
+            <a href="#/library" class="plus-topbar-link" data-nav="library">
+                <svg viewBox="0 0 24 24" width="18" height="18" style="fill: currentColor;">
+                    <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9h-4v4h-2v-4H9V9h4V5h2v4h4v2z"/>
+                </svg>
+                <span>Library</span>
+            </a>
+            <a href="#/settings" class="plus-topbar-link" data-nav="settings">
+                <svg viewBox="0 0 24 24" width="18" height="18" style="fill: currentColor;">
+                    <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                </svg>
+                <span>Settings</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="plus-main">
+        <!-- Sidebar Navigation -->
+        <div id="plus-sidebar" class="plus-sidebar">
+            <!-- Sidebar Header -->
+            <div class="plus-sidebar-header">
+                <svg viewBox="0 0 24 24" width="22" height="22" style="fill: var(--accent-color, #7b5bf5);">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
+                </svg>
+                <span>StreamGo Plus</span>
+            </div>
+            <div class="plus-sidebar-nav">
+                <div class="plus-sidebar-item active" data-category="themes">
+                    <svg viewBox="0 0 24 24" width="20" height="20" style="fill: currentColor;">
+                        <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+                    </svg>
+                    <span>Themes</span>
+                </div>
+                <div class="plus-sidebar-item" data-category="plugins">
+                    <svg viewBox="0 0 24 24" width="20" height="20" style="fill: currentColor;">
+                        <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7s2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
+                    </svg>
+                    <span>Plugins</span>
+                </div>
+                <div class="plus-sidebar-item" data-category="tweaks">
+                    <svg viewBox="0 0 24 24" width="20" height="20" style="fill: currentColor;">
+                        <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                    </svg>
+                    <span>Tweaks</span>
+                </div>
+                <div class="plus-sidebar-item" data-category="appearance">
+                    <svg viewBox="0 0 24 24" width="20" height="20" style="fill: currentColor;">
+                        <path d="M20.71 5.63l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-3.12 3.12-1.93-1.91-1.41 1.41 1.42 1.42L3 16.25V21h4.75l8.92-8.92 1.42 1.42 1.41-1.41-1.92-1.92 3.12-3.12c.4-.4.4-1.03.01-1.42zM6.92 19L5 17.08l8.06-8.06 1.92 1.92L6.92 19z"/>
+                    </svg>
+                    <span>Appearance</span>
+                </div>
+                <div class="plus-sidebar-item" data-category="about">
+                    <svg viewBox="0 0 24 24" width="20" height="20" style="fill: currentColor;">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                    </svg>
+                    <span>About</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Area -->
+        <div id="plus-content" class="plus-content">
+            <!-- Dynamic content will be injected here -->
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Plus Page Container */
+    .plus-page-container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        width: 100%;
+        background: transparent;
+        color: white;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+        position: relative;
+        z-index: 1;
+        overflow: hidden;
+    }
+
+    /* Top Navigation Bar */
+    .plus-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        height: 60px;
+        min-height: 60px;
+        background: rgba(20, 20, 22, 0.95);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        position: relative;
+        z-index: 100;
+    }
+
+    .plus-topbar-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .plus-topbar-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(255, 255, 255, 0.8);
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .plus-topbar-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: white;
+    }
+
+    .plus-topbar-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 16px;
+        font-weight: 600;
+        color: white;
+    }
+
+    .plus-topbar-nav {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .plus-topbar-link {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border-radius: 8px;
+        color: rgba(255, 255, 255, 0.7);
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        background: transparent;
+    }
+
+    .plus-topbar-link:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: white;
+    }
+
+    .plus-topbar-link svg {
+        opacity: 0.8;
+    }
+
+    .plus-topbar-link:hover svg {
+        opacity: 1;
+    }
+
+    /* Main content area (sidebar + content) */
+    .plus-main {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        background: linear-gradient(135deg, #19191e 0%, #0f0f14 100%);
+    }
+
+    .plus-sidebar {
+        background: #1a1a1f;
+        border-right: 1px solid rgba(255, 255, 255, 0.06);
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .plus-sidebar-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 20px 20px 16px;
+        font-size: 16px;
+        font-weight: 600;
+        color: white;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        margin-bottom: 8px;
+    }
+
+    .plus-sidebar-nav {
+        padding: 8px 0;
+        flex: 1;
+    }
+
+    .plus-sidebar-item {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 12px 20px;
+        margin: 2px 12px;
+        cursor: pointer;
+        transition: all 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 14px;
+        font-weight: 500;
+        border-radius: 999px;
+        border: 1px solid transparent;
+    }
+
+    .plus-sidebar-item:hover {
+        background: rgba(90, 90, 90, 0.25);
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    .plus-sidebar-item.active {
+        background: rgba(70, 70, 70, 0.35);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+
+    .plus-sidebar-item svg {
+        opacity: 0.8;
+        flex-shrink: 0;
+        transition: opacity 0.15s ease;
+    }
+
+    .plus-sidebar-item:hover svg {
+        opacity: 1;
+    }
+
+    .plus-sidebar-item.active svg {
+        opacity: 1;
+        color: white;
+    }
+
+    .plus-content {
+        padding: 32px 40px;
+        overflow-y: auto;
+        background: transparent;
+    }
+
+    .plus-content-header {
+        margin-bottom: 28px;
+    }
+
+    .plus-content-header h1 {
+        font-size: 28px;
+        font-weight: 600;
+        margin: 0 0 8px 0;
+        color: white;
+    }
+
+    .plus-content-header p {
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 14px;
+        margin: 0;
+    }
+
+    .plus-section {
+        margin-bottom: 32px;
+    }
+
+    .plus-section-title {
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: rgba(255, 255, 255, 0.4);
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .plus-card {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 12px;
+        transition: background 0.15s ease;
+    }
+
+    .plus-card:hover {
+        background: rgba(255, 255, 255, 0.06);
+    }
+
+    .plus-option {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .plus-option:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+
+    .plus-option:first-child {
+        padding-top: 0;
+    }
+
+    .plus-option-info {
+        flex: 1;
+        margin-right: 20px;
+    }
+
+    .plus-option-label {
+        font-size: 15px;
+        font-weight: 500;
+        color: white;
+        margin-bottom: 4px;
+    }
+
+    .plus-option-description {
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.45);
+        line-height: 1.4;
+    }
+
+    /* Mods list container */
+    .plus-mods-container {
+        margin-top: 16px;
+    }
+
+    .plus-search-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .plus-search-input {
+        flex: 1;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 12px 16px;
+        color: white;
+        font-size: 14px;
+        outline: none;
+        transition: border-color 0.15s ease;
+    }
+
+    .plus-search-input:focus {
+        border-color: var(--accent-color, #7b5bf5);
+    }
+
+    .plus-search-input::placeholder {
+        color: rgba(255, 255, 255, 0.3);
+    }
+
+    .plus-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px 20px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        color: white;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        text-decoration: none;
+    }
+
+    .plus-btn:hover {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .plus-btn-primary {
+        background: var(--accent-color, #7b5bf5);
+        border-color: var(--accent-color, #7b5bf5);
+    }
+
+    .plus-btn-primary:hover {
+        filter: brightness(1.1);
+    }
+
+    /* Keyboard shortcuts grid */
+    .plus-shortcuts-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+
+    .plus-shortcut-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 12px;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 6px;
+    }
+
+    .plus-shortcut-item span {
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 13px;
+    }
+
+    .plus-shortcut-item kbd {
+        background: rgba(255, 255, 255, 0.08);
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.8);
+    }
+
+    /* Color picker */
+    .plus-color-options {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .plus-color-option {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        cursor: pointer;
+        border: 3px solid transparent;
+        transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+
+    .plus-color-option:hover {
+        transform: scale(1.1);
+    }
+
+    .plus-color-option.selected {
+        border-color: white;
+    }
+
+    /* Range sliders */
+    .plus-range-container {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .plus-range-container input[type="range"] {
+        flex: 1;
+        accent-color: var(--accent-color, #7b5bf5);
+        height: 6px;
+        max-width: 200px;
+    }
+
+    .plus-range-value {
+        min-width: 50px;
+        text-align: right;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 14px;
+    }
+
+    /* About section info cards */
+    .plus-info-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 14px;
+    }
+
+    .plus-info-row svg {
+        width: 18px;
+        height: 18px;
+        opacity: 0.6;
+    }
+
+    .plus-info-row a {
+        color: var(--accent-color, #7b5bf5);
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .plus-info-row a:hover {
+        text-decoration: underline;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 900px) {
+        .plus-main {
+            grid-template-columns: 180px 1fr;
+        }
+
+        .plus-content {
+            padding: 24px;
+        }
+
+        .plus-topbar-link span {
+            display: none;
+        }
+
+        .plus-topbar-link {
+            padding: 8px 12px;
+        }
+    }
+
+    @media (max-width: 700px) {
+        .plus-main {
+            grid-template-columns: 1fr;
+        }
+
+        .plus-sidebar {
+            display: none;
+        }
+
+        .plus-topbar-title span {
+            display: none;
+        }
+    }
+
+    /* Mod items (themes/plugins) */
+    .plus-mod-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        margin-bottom: 12px;
+        transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .plus-mod-item:hover {
+        background: rgba(255, 255, 255, 0.07);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .plus-mod-info {
+        flex: 1;
+        min-width: 0;
+        margin-right: 20px;
+    }
+
+    .plus-mod-name {
+        font-size: 15px;
+        font-weight: 600;
+        color: white;
+        margin-bottom: 4px;
+    }
+
+    .plus-mod-meta {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.4);
+        margin-bottom: 6px;
+    }
+
+    .plus-mod-description {
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.55);
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .plus-mod-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+</style>

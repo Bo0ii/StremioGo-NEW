@@ -840,9 +840,8 @@
         }
         
         if (shouldShow && !heroExists) {
+            // Single call - addHeroDiv has internal retry logic
             setTimeout(() => addHeroDiv(), 100);
-            setTimeout(() => addHeroDiv(), 500);
-            setTimeout(() => addHeroDiv(), 1000);
         }
         
         heroState.lastKnownHash = currentHash;

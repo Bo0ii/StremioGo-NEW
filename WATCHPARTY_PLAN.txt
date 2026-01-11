@@ -1,0 +1,123 @@
+STREAMGO WATCH PARTY IMPLEMENTATION PLAN
+========================================
+
+CURRENT SITUATION
+-----------------
+StreamGo currently uses Peario servers (ws.peario.xyz) for the Watch Party feature.
+This has been unreliable and causes connection issues.
+
+The UI also has display problems - the party PIN is too long and breaks the layout.
+
+
+WHAT WE ARE GOING TO DO
+-----------------------
+Replace the Peario-based system with WatchParty's proven system.
+WatchParty is an open-source project (MIT license) that we can freely use and modify.
+
+We will host our own server on Hugging Face Spaces for free.
+This gives us full control and reliability.
+
+
+THE PLAN (THREE PHASES)
+-----------------------
+
+PHASE 1: Deploy Our Own Server
+
+   1. Create a free Hugging Face account at huggingface.co
+
+   2. Create a new Space with these settings:
+      - Name: streamgo-party (or similar)
+      - SDK: Docker
+      - Visibility: Public (required for free hosting)
+
+   3. Upload the WatchParty server files:
+      - Dockerfile
+      - package.json
+      - index.js
+      - live.js
+
+   4. Set environment variable SERVER_PREFIX to "S" (for StreamGo)
+
+   5. Server will be live at: wss://YOUR-USERNAME-streamgo-party.hf.space
+
+
+PHASE 2: Update StreamGo Client Code
+
+   1. Modify PartyService.ts to use WatchParty's protocol instead of Peario
+
+   2. Change the server URL to point to our Hugging Face server
+
+   3. Update the connection logic to use WatchParty's authentication method
+      (username, party name, password, host privileges)
+
+   4. Add latency compensation for better sync accuracy
+
+   5. Add support for multiple hosts in a party
+
+
+PHASE 3: Fix and Improve the UI
+
+   1. Generate shorter, friendlier party codes (like "S7HK4M" instead of long UUIDs)
+
+   2. Fix the layout so "Party PIN" displays correctly
+
+   3. Show participants with their names and host badges
+
+   4. Keep the connection alive when closing the popover (optional setting)
+
+   5. Add visual feedback when syncing playback
+
+
+BENEFITS OF THIS APPROACH
+-------------------------
+- Free hosting forever (Hugging Face Spaces)
+- No maintenance needed (set and forget)
+- Full control over the server
+- Proven system (WatchParty has been running successfully)
+- Better sync with latency compensation
+- Shorter, nicer party codes
+- Multiple hosts can control playback
+- Self-hostable if users want their own server
+
+
+WHAT WATCHPARTY GIVES US
+------------------------
+- Simple WebSocket server (about 170 lines of code)
+- Automatic party code generation
+- Password protection for parties
+- Host privilege system (promote/demote members)
+- Latency tracking for accurate sync
+- Heartbeat system to detect disconnections
+- Chat messaging between party members
+
+
+TECHNICAL NOTES
+---------------
+WatchParty uses a protocol-based WebSocket connection.
+When creating a party, the client sends: c#version#username#password#partyname#ishost
+When joining a party, the client sends: j#version#username#partycode#password
+
+The server responds with party updates whenever members join, leave, or change.
+Commands are broadcast from hosts to all party members with latency compensation.
+
+
+FILES THAT WILL BE MODIFIED IN STREAMGO
+---------------------------------------
+- src/utils/PartyService.ts (main changes - new protocol)
+- src/components/party-popover/partyPopover.ts (UI fixes)
+- src/components/party-popover/party-popover.html (template updates)
+- src/components/party-panel/partyPanel.ts (if keeping this component)
+
+
+TIMELINE
+--------
+Phase 1 (Server Setup): Can be done in 10-15 minutes
+Phase 2 (Client Code): Main development work
+Phase 3 (UI Polish): After core functionality works
+
+
+RESOURCES
+---------
+WatchParty Repository: github.com/MateusAquino/WatchParty
+Hugging Face Spaces: huggingface.co/spaces
+WatchParty License: MIT (free to use and modify)

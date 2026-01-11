@@ -22,6 +22,19 @@ import StreamingConfig from "./core/StreamingConfig";
 
 app.setName("streamgo");
 
+// Register stremio:// protocol handler - MUST be called before app.ready
+// This allows the app to handle stremio:// links from browsers
+// On Windows, we need to set it even if already set to ensure proper registration
+if (process.platform === 'win32') {
+    // On Windows, always set to ensure proper registration
+    app.setAsDefaultProtocolClient('stremio');
+} else {
+    // On macOS/Linux, only set if not already set
+    if (!app.isDefaultProtocolClient('stremio')) {
+        app.setAsDefaultProtocolClient('stremio');
+    }
+}
+
 let mainWindow: BrowserWindow | null;
 const transparencyFlagPath = join(app.getPath("userData"), "transparency");
 const useStremioServiceFlagPath = join(app.getPath("userData"), "use_stremio_service_for_streaming");
@@ -142,6 +155,8 @@ async function createWindow() {
             webSecurity: false,
             nodeIntegration: true,
             contextIsolation: false,
+            // Enable webview tag for Peario overlay
+            webviewTag: true,
             // Additional security hardening
             allowRunningInsecureContent: false,
             experimentalFeatures: false,
@@ -425,6 +440,91 @@ async function createWindow() {
 }
 
 // Use Stremio Service for streaming
+// Handle stremio:// protocol URLs
+function handleProtocolUrl(url: string): void {
+    logger.info(`[Protocol] Received stremio:// URL: ${url}`);
+    
+    try {
+        let manifestUrl: string | null = null;
+        
+        // Handle different stremio:// URL formats
+        // Format 1: stremio://addon/install/<manifest-url>
+        // Format 2: stremio://<hostname>/manifest.json (direct manifest URL)
+        // Format 3: stremio://<encoded-manifest-url>
+        
+        if (url.includes('/addon/install/')) {
+            // Format 1: stremio://addon/install/<manifest-url>
+            const urlObj = new URL(url);
+            const manifestPath = urlObj.pathname.replace('/addon/install/', '');
+            manifestUrl = decodeURIComponent(manifestPath);
+        } else {
+            // Format 2 or 3: Try to extract manifest URL from the protocol URL
+            // Remove the stremio:// prefix
+            const withoutProtocol = url.replace(/^stremio:\/\//, '');
+            
+            // Check if it looks like a full URL (starts with http:// or https://)
+            if (withoutProtocol.startsWith('http://') || withoutProtocol.startsWith('https://')) {
+                manifestUrl = withoutProtocol;
+            } else {
+                // It's likely a hostname-based format like: stremio://hostname/manifest.json
+                // Reconstruct as https:// URL
+                // Handle cases like: stremio://2ecbbd610840-stremio-ar.baby-beamup.club/manifest.json
+                if (withoutProtocol.includes('/')) {
+                    const [hostname, ...pathParts] = withoutProtocol.split('/');
+                    const path = pathParts.join('/');
+                    manifestUrl = `https://${hostname}/${path}`;
+                } else {
+                    // Just hostname, assume manifest.json
+                    manifestUrl = `https://${withoutProtocol}/manifest.json`;
+                }
+            }
+        }
+        
+        if (!manifestUrl) {
+            logger.warn(`[Protocol] Could not extract manifest URL from: ${url}`);
+            return;
+        }
+        
+        // Ensure manifestUrl is a valid URL
+        try {
+            new URL(manifestUrl);
+        } catch {
+            // If not a valid URL, try to fix it
+            if (!manifestUrl.startsWith('http://') && !manifestUrl.startsWith('https://')) {
+                manifestUrl = `https://${manifestUrl}`;
+            }
+        }
+        
+        logger.info(`[Protocol] Installing addon from manifest: ${manifestUrl}`);
+        
+        // Navigate to Stremio's addon installation page
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            const baseUrl = URLS.STREMIO_WEB;
+            // Navigate directly to addon installation URL
+            // Stremio's web interface handles addon installation via URL parameters
+            const addonUrl = `#/addons?addon=${encodeURIComponent(manifestUrl)}`;
+            mainWindow.loadURL(`${baseUrl}${addonUrl}`);
+            
+            mainWindow.focus();
+            if (mainWindow.isMinimized()) {
+                mainWindow.restore();
+            }
+        } else {
+            // Window not ready yet, store for later
+            logger.warn("[Protocol] Main window not ready, addon URL will be handled when window loads");
+            // Queue the URL for when window is ready
+            setTimeout(() => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    handleProtocolUrl(url);
+                }
+            }, 1000);
+        }
+    } catch (error) {
+        logger.error(`[Protocol] Error parsing stremio:// URL: ${(error as Error).message}`);
+        logger.error(`[Protocol] Full error stack: ${(error as Error).stack}`);
+    }
+}
+
 async function useStremioService() {
     if(await StremioService.isServiceInstalled()) {
         logger.info("Found installation of Stremio Service.");
@@ -469,6 +569,29 @@ async function useStremioService() {
     }
 }
 
+// Handle single instance lock for Windows/Linux
+// This prevents multiple instances and handles protocol URLs when app is already running
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+    // Another instance is already running, quit this one
+    app.quit();
+} else {
+    // Handle second instance (when app is already running and protocol link is clicked)
+    app.on('second-instance', (_event, commandLine) => {
+        // Someone tried to run a second instance, focus our window instead
+        if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+        }
+        // Handle protocol URL from command line
+        const protocolUrl = commandLine.find(arg => arg.startsWith('stremio://'));
+        if (protocolUrl) {
+            handleProtocolUrl(protocolUrl);
+        }
+    });
+}
+
 app.on("ready", async () => {
     logger.info("Enhanced version: v" + Updater.getCurrentVersion());
     logger.info("Running on NodeJS version: " + process.version);
@@ -478,6 +601,32 @@ app.on("ready", async () => {
     logger.info("User data path: " + app.getPath("userData"));
     logger.info("Themes path: " + Properties.themesPath);
     logger.info("Plugins path: " + Properties.pluginsPath);
+
+    // Handle protocol URLs when app is opened via stremio:// link
+    if (process.platform === 'darwin') {
+        // macOS: handle open-url event
+        app.on('open-url', (event, url) => {
+            event.preventDefault();
+            handleProtocolUrl(url);
+        });
+    } else {
+        // Windows/Linux: handle protocol URL from command line args
+        // On Windows, protocol URLs are passed as command line arguments
+        // Check all arguments for stremio:// URLs
+        const protocolUrls = process.argv.filter(arg => arg.startsWith('stremio://'));
+        if (protocolUrls.length > 0) {
+            // Handle the first protocol URL found
+            handleProtocolUrl(protocolUrls[0]);
+        }
+        
+        // Also check for URLs that might have been passed differently
+        // Sometimes Windows passes it as a single argument with quotes
+        const allArgs = process.argv.join(' ');
+        const urlMatch = allArgs.match(/stremio:\/\/[^\s"']+/);
+        if (urlMatch && protocolUrls.length === 0) {
+            handleProtocolUrl(urlMatch[0]);
+        }
+    }
 
     try {
         const basePath = Properties.enhancedPath;

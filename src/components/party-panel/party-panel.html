@@ -1,0 +1,550 @@
+<div id="party-panel" class="party-panel">
+    <!-- Header -->
+    <div class="party-header">
+        <div class="party-title">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+            </svg>
+            <span>StreamGo Party</span>
+        </div>
+        <button id="party-close-btn" class="party-close-btn" title="Close">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Content -->
+    <div class="party-content">
+        <!-- Lobby View (not in room) -->
+        <div id="party-lobby" class="party-lobby">
+            <div class="party-status" id="party-status">
+                <div class="party-loading-spinner"></div>
+                <span>Connecting...</span>
+            </div>
+
+            <div class="party-actions" id="party-actions" style="display: none;">
+                <button id="party-create-btn" class="party-btn party-btn-primary">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                        <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                    </svg>
+                    Create Party
+                </button>
+
+                <div class="party-divider">
+                    <span>or</span>
+                </div>
+
+                <div class="party-join-form">
+                    <input type="text" id="party-join-input" class="party-input" placeholder="Enter room code...">
+                    <button id="party-join-btn" class="party-btn party-btn-secondary">
+                        Join
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Room View (in room) -->
+        <div id="party-room" class="party-room" style="display: none;">
+            <!-- Room Info -->
+            <div class="party-room-info">
+                <div class="party-room-code">
+                    <span class="party-label">Room Code</span>
+                    <div class="party-code-row">
+                        <span id="party-room-id" class="party-code">------</span>
+                        <button id="party-copy-btn" class="party-icon-btn" title="Copy code">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <button id="party-leave-btn" class="party-btn party-btn-danger party-btn-small">
+                    Leave
+                </button>
+            </div>
+
+            <!-- Users List -->
+            <div class="party-users">
+                <span class="party-label">Watching Together</span>
+                <div id="party-users-list" class="party-users-list">
+                    <!-- Users will be added here -->
+                </div>
+            </div>
+
+            <!-- Sync Controls -->
+            <div class="party-sync">
+                <label class="party-toggle">
+                    <input type="checkbox" id="party-auto-sync" checked>
+                    <span class="party-toggle-slider"></span>
+                    <span class="party-toggle-label">Auto-sync playback</span>
+                </label>
+            </div>
+
+            <!-- Chat -->
+            <div class="party-chat">
+                <span class="party-label">Chat</span>
+                <div id="party-messages" class="party-messages">
+                    <!-- Messages will be added here -->
+                </div>
+                <div class="party-chat-input">
+                    <input type="text" id="party-message-input" class="party-input" placeholder="Type a message...">
+                    <button id="party-send-btn" class="party-icon-btn" title="Send">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .party-panel {
+        position: fixed !important;
+        top: 60px !important;
+        right: 20px !important;
+        width: 320px !important;
+        max-height: calc(100vh - 100px) !important;
+        background: rgba(20, 20, 24, 0.98) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 12px !important;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+        z-index: 2147483647 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        animation: party-slide-in 0.2s ease-out !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    }
+
+    @keyframes party-slide-in {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .party-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 16px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .party-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 15px;
+        font-weight: 600;
+        color: white;
+    }
+
+    .party-title svg {
+        color: #7b5bf5;
+    }
+
+    .party-close-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        background: rgba(255, 255, 255, 0.06);
+        border: none;
+        border-radius: 6px;
+        color: rgba(255, 255, 255, 0.6);
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .party-close-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: white;
+    }
+
+    .party-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+    }
+
+    /* Lobby View */
+    .party-lobby {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .party-status {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 20px;
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 14px;
+    }
+
+    .party-loading-spinner {
+        width: 20px;
+        height: 20px;
+        border: 2px solid rgba(123, 91, 245, 0.2);
+        border-top-color: #7b5bf5;
+        border-radius: 50%;
+        animation: party-spin 0.8s linear infinite;
+    }
+
+    @keyframes party-spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .party-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .party-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px 20px;
+        font-size: 14px;
+        font-weight: 500;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .party-btn-primary {
+        background: linear-gradient(135deg, #7b5bf5, #a855f7);
+        color: white;
+    }
+
+    .party-btn-primary:hover {
+        filter: brightness(1.1);
+        transform: translateY(-1px);
+    }
+
+    .party-btn-secondary {
+        background: rgba(255, 255, 255, 0.08);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .party-btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.12);
+    }
+
+    .party-btn-danger {
+        background: rgba(233, 72, 72, 0.2);
+        color: #e94848;
+    }
+
+    .party-btn-danger:hover {
+        background: rgba(233, 72, 72, 0.3);
+    }
+
+    .party-btn-small {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    .party-divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: rgba(255, 255, 255, 0.3);
+        font-size: 12px;
+    }
+
+    .party-divider::before,
+    .party-divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .party-join-form {
+        display: flex;
+        gap: 8px;
+    }
+
+    .party-input {
+        flex: 1;
+        padding: 10px 14px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        color: white;
+        font-size: 14px;
+        outline: none;
+        transition: all 0.15s ease;
+    }
+
+    .party-input::placeholder {
+        color: rgba(255, 255, 255, 0.3);
+    }
+
+    .party-input:focus {
+        border-color: rgba(123, 91, 245, 0.5);
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+    /* Room View */
+    .party-room {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .party-room-info {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px;
+        background: rgba(123, 91, 245, 0.1);
+        border-radius: 8px;
+    }
+
+    .party-room-code {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .party-label {
+        font-size: 11px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.5);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .party-code-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .party-code {
+        font-size: 16px;
+        font-weight: 600;
+        color: #7b5bf5;
+        font-family: monospace;
+    }
+
+    .party-icon-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        background: rgba(255, 255, 255, 0.08);
+        border: none;
+        border-radius: 6px;
+        color: rgba(255, 255, 255, 0.6);
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .party-icon-btn:hover {
+        background: rgba(123, 91, 245, 0.3);
+        color: white;
+    }
+
+    /* Users */
+    .party-users {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .party-users-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .party-user {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 6px;
+    }
+
+    .party-user-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 600;
+        color: white;
+    }
+
+    .party-user-name {
+        flex: 1;
+        font-size: 13px;
+        color: white;
+    }
+
+    .party-user-owner {
+        font-size: 10px;
+        padding: 2px 6px;
+        background: rgba(123, 91, 245, 0.2);
+        color: #a855f7;
+        border-radius: 4px;
+    }
+
+    /* Sync Toggle */
+    .party-sync {
+        padding: 12px 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .party-toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+    }
+
+    .party-toggle input {
+        display: none;
+    }
+
+    .party-toggle-slider {
+        position: relative;
+        width: 36px;
+        height: 20px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 20px;
+        transition: all 0.2s ease;
+    }
+
+    .party-toggle-slider::before {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        background: white;
+        border-radius: 50%;
+        transition: all 0.2s ease;
+    }
+
+    .party-toggle input:checked + .party-toggle-slider {
+        background: #7b5bf5;
+    }
+
+    .party-toggle input:checked + .party-toggle-slider::before {
+        transform: translateX(16px);
+    }
+
+    .party-toggle-label {
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.8);
+    }
+
+    /* Chat */
+    .party-chat {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex: 1;
+        min-height: 150px;
+    }
+
+    .party-messages {
+        flex: 1;
+        min-height: 100px;
+        max-height: 200px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+    }
+
+    .party-message {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .party-message-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .party-message-user {
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .party-message-time {
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.3);
+    }
+
+    .party-message-text {
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.9);
+        word-break: break-word;
+    }
+
+    .party-chat-input {
+        display: flex;
+        gap: 8px;
+    }
+
+    .party-chat-input .party-input {
+        flex: 1;
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+
+    /* Scrollbar */
+    .party-content::-webkit-scrollbar,
+    .party-messages::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .party-content::-webkit-scrollbar-track,
+    .party-messages::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .party-content::-webkit-scrollbar-thumb,
+    .party-messages::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 3px;
+    }
+
+    .party-content::-webkit-scrollbar-thumb:hover,
+    .party-messages::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+</style>

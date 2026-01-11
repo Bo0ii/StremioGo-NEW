@@ -794,6 +794,121 @@ nav[class*="horizontal-nav-bar"] [class*="buttons-container-Oc5z1"] {
   opacity: 0 !important;
 }
 
+/* ========================= NAVIGATION STABILITY ========================= */
+/* Keep nav bar stable - instant updates with smooth fade-in animation */
+
+/* Ensure horizontal nav bar maintains consistent height */
+[class*="horizontal-nav-bar"] {
+  min-height: 60px !important;
+}
+
+/* Ensure vertical nav inside horizontal nav is always visible */
+[class*="horizontal-nav-bar"] [class*="vertical-nav-bar"] {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* ========================= PAGE LOADING BLUR OVERLAY ========================= */
+/* Beautiful blur loading screen when switching main pages */
+
+/* Main overlay container - hidden by default */
+#streamgo-page-loader {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 99999 !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  background: rgba(10, 10, 15, 0.5) !important;
+  backdrop-filter: blur(15px) !important;
+  -webkit-backdrop-filter: blur(15px) !important;
+  will-change: opacity !important;
+  transform: translateZ(0) !important;
+}
+
+/* Active state - show overlay instantly */
+#streamgo-page-loader.active {
+  opacity: 1 !important;
+  pointer-events: all !important;
+  transition: none !important;
+}
+
+/* Fade out state - GPU accelerated smooth fade */
+#streamgo-page-loader.fade-out {
+  opacity: 0 !important;
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  pointer-events: none !important;
+}
+
+/* ========================= NAV LOADING ANIMATION ========================= */
+/* Smooth skeleton fade-in effect when switching pages */
+
+/* Keyframes for skeleton shimmer effect */
+@keyframes streamgo-shimmer {
+  0% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+  100% { opacity: 0.4; }
+}
+
+/* Keyframes for smooth fade-in */
+@keyframes streamgo-fade-in {
+  from { opacity: 0.5; }
+  to { opacity: 1; }
+}
+
+/* Loading state - subtle shimmer on nav content */
+[class*="main-nav-bars-container"].streamgo-nav-loading [class*="vertical-nav-bar"],
+[class*="main-nav-bars-container"].streamgo-nav-loading [class*="buttons-container"],
+[class*="main-nav-bars-container"].streamgo-nav-loading .app-icon-glass-theme {
+  animation: streamgo-shimmer 0.3s ease-in-out !important;
+}
+
+/* After loading - smooth fade-in */
+[class*="main-nav-bars-container"]:not(.streamgo-nav-loading) [class*="vertical-nav-bar"],
+[class*="main-nav-bars-container"]:not(.streamgo-nav-loading) [class*="buttons-container"],
+[class*="main-nav-bars-container"]:not(.streamgo-nav-loading) .app-icon-glass-theme {
+  animation: streamgo-fade-in 0.15s ease-out !important;
+}
+
+/* Keep nav bar structure stable during animation */
+[class*="main-nav-bars-container"].streamgo-nav-loading {
+  pointer-events: none;
+}
+
+[class*="main-nav-bars-container"]:not(.streamgo-nav-loading) {
+  pointer-events: auto;
+}
+
+/* ========================= HIDE ORIGINAL STREMIO DOCK ICONS ========================= */
+/* Hide the original Stremio sidebar/dock icons to prevent flickering during navigation */
+/* The Glass theme uses text labels instead, so icons are not needed */
+
+/* Hide ALL SVG icons in vertical nav bar links - prevents icon flicker */
+[class*="vertical-nav-bar"] a svg,
+[class*="vertical-nav-bar"] [class*="icon"],
+[class*="vertical-nav-bar"] a > svg,
+[class*="nav-tab-button"] svg,
+[class*="nav-tabs-container"] svg {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+}
+
+/* Hide the original vertical nav bar when it's NOT inside horizontal nav bar */
+/* This prevents the old dock from flashing in its original sidebar position */
+#app > div[class*="router"] > div[class*="routes-container"] > div > div[class*="route-content"] [class*="vertical-nav-bar"]:not([class*="horizontal-nav-bar"] *),
+[class*="route-content"] > [class*="vertical-nav-bar"],
+[class*="route-content"] [class*="nav-bars-container"] > [class*="vertical-nav-bar"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+
 /* ========================= VERTICAL NAV / SIDEBAR ========================= */
 
 /* Position the vertical nav itself */
@@ -2067,6 +2182,29 @@ body.performance-mode .meta-item-container-Tj0Ib .poster-container-qkw48:hover .
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.15), inset 0 -1px 0 rgba(0, 0, 0, 0.1) !important;
     backdrop-filter: var(--backdrop-filter) !important;
     border: 1px solid rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Peario Watch Together button - make it circular like other action buttons */
+#peario-watch-button {
+    border-radius: 50% !important;
+    aspect-ratio: 1 !important;
+    color: #ffffff !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* Ensure the icon is white and centered */
+#peario-watch-button svg {
+    fill: #ffffff !important;
+    color: #ffffff !important;
+    display: block !important;
+    margin: auto !important;
+}
+
+#peario-watch-button svg path {
+    fill: #ffffff !important;
+    color: #ffffff !important;
 }
 
 .chip-L3r9A.active-jnhyP {
