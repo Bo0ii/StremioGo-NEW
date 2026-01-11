@@ -1,0 +1,259 @@
+name: Build and Publish Electron App
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }} - ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            arch: x64
+          - os: ubuntu-latest
+            target: linux
+            arch: arm64
+          - os: macos-latest
+            target: mac
+            arch: x64
+          - os: macos-latest
+            target: mac
+            arch: arm64
+          - os: windows-latest
+            target: win
+            arch: x64
+          - os: windows-latest
+            target: win
+            arch: arm64
+
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20.x'
+
+      - name: Install Python to fix node-gyp issues
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Cache Node.js modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.npm
+            node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install -g @electron/rebuild
+
+      - name: Manually install dmg-license (macOS only)
+        if: matrix.os == 'macos-latest'
+        run: npm install dmg-license
+
+      - name: Rebuild native dependencies
+        run: |
+          npx @electron/rebuild -f
+        env:
+          PYTHON: python3
+
+      - name: Build for production with electron-builder
+        run: npm run build:${{ matrix.target }}:${{ matrix.arch }} -- --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Debug: List release-builds directory"
+        run: |
+          echo "Contents of release-builds directory:"
+          ls -l release-builds
+
+      - name: Prepare artifacts (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p release-artifacts
+
+          # Handle Linux - move installers only
+          if [[ "${{ matrix.target }}" == "linux" ]]; then
+            if compgen -G "release-builds/*.AppImage" > /dev/null; then
+              mv release-builds/*.AppImage release-artifacts/
+            fi
+          fi
+
+          # Handle macOS - move installers only
+          if [[ "${{ matrix.target }}" == "mac" ]]; then
+            if compgen -G "release-builds/*.dmg" > /dev/null; then
+              mv release-builds/*.dmg release-artifacts/
+            fi
+          fi
+        shell: bash
+
+      - name: Prepare artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-artifacts | Out-Null
+
+          # Move .exe installer files only
+          Get-ChildItem -Path "release-builds" -Filter "*.exe" | ForEach-Object {
+              Move-Item $_.FullName -Destination "release-artifacts/" -Force
+          }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.target }}-${{ matrix.arch }}
+          path: |
+            release-artifacts/*.exe
+            release-artifacts/*.dmg
+            release-artifacts/*.AppImage
+          if-no-files-found: ignore
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get version and create tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG_NAME="v${VERSION}"
+          TIMESTAMP=$(date +'%Y%m%d%H%M%S')
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch --tags
+
+          # Check if tag already exists, if so append timestamp
+          if git ls-remote --tags origin "$TAG_NAME" 2>/dev/null | grep -q "refs/tags/$TAG_NAME"; then
+            echo "Tag $TAG_NAME already exists. Appending timestamp."
+            TAG_NAME="${TAG_NAME}-${TIMESTAMP}"
+          fi
+
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+          echo "Creating tag: $TAG_NAME"
+
+          git tag $TAG_NAME
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git $TAG_NAME
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Flatten artifact directory structure
+        run: |
+          # Move all files from subdirectories to release-artifacts root
+          find release-artifacts -type f -exec mv {} release-artifacts/ \;
+          # Remove empty subdirectories
+          find release-artifacts -type d -empty -delete 2>/dev/null || true
+          # List all files for debugging
+          echo "Files in release-artifacts:"
+          ls -la release-artifacts/ || echo "Directory is empty or doesn't exist"
+
+      - name: Rename artifacts to user-friendly names
+        run: |
+          cd release-artifacts
+          VERSION=$(node -p "require('../package.json').version")
+
+          echo "Renaming artifacts to user-friendly names..."
+
+          # Mac DMG files - use underscores to avoid URL encoding issues
+          for f in *-arm64.dmg; do
+            [ -f "$f" ] && mv "$f" "StreamGo-${VERSION}-Mac-Apple-Silicon.dmg"
+          done
+          for f in *.dmg; do
+            [[ -f "$f" && ! "$f" =~ "Apple-Silicon" ]] && mv "$f" "StreamGo-${VERSION}-Mac-Intel.dmg" 2>/dev/null || true
+          done
+
+          # Windows EXE files - Setup installer
+          for f in *Setup*.exe; do
+            [ -f "$f" ] && mv "$f" "StreamGo-${VERSION}-Windows.exe"
+          done
+          # Windows portable
+          for f in *.exe; do
+            [[ -f "$f" && ! "$f" =~ "Windows" ]] && mv "$f" "StreamGo-${VERSION}-Windows-Portable.exe" 2>/dev/null || true
+          done
+
+          # Linux AppImage files
+          for f in *-arm64.AppImage; do
+            [ -f "$f" ] && mv "$f" "StreamGo-${VERSION}-Linux-ARM.AppImage"
+          done
+          for f in *.AppImage; do
+            [[ -f "$f" && ! "$f" =~ "ARM" ]] && mv "$f" "StreamGo-${VERSION}-Linux.AppImage" 2>/dev/null || true
+          done
+
+          # Remove blockmap files
+          rm -f *.blockmap
+
+          echo "Renamed files:"
+          ls -la
+
+      - name: Generate checksums
+        run: |
+          cd release-artifacts
+          echo "Generating SHA256 checksums..."
+          sha256sum *.exe *.dmg *.AppImage 2>/dev/null | tee SHA256SUMS.txt || true
+          echo "Generated checksums:"
+          cat SHA256SUMS.txt
+
+      - name: Check if beta release
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *"beta"* ]] || [[ "$VERSION" == *"alpha"* ]]; then
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+          else
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+          fi
+
+      - name: Delete existing release and tag if present
+        run: |
+          # Delete the release if it already exists (to handle retries)
+          gh release delete "${{ env.TAG_NAME }}" --yes --cleanup-tag 2>/dev/null || true
+          # Wait a moment to ensure GitHub processes the deletion
+          sleep 5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          prerelease: ${{ env.IS_PRERELEASE }}
+          generate_release_notes: true
+          make_latest: ${{ env.IS_PRERELEASE == 'false' }}
+          files: |
+            release-artifacts/*.exe
+            release-artifacts/*.dmg
+            release-artifacts/*.AppImage
+            release-artifacts/SHA256SUMS.txt
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
