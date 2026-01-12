@@ -411,9 +411,19 @@ function setupPartyServiceListeners(): void {
 	});
 
 	// Sync event (room updated)
-	partyService.on('sync', () => {
+	partyService.on('sync', (room) => {
 		logger.info('[PartyPopover] Room synced');
-		console.log('[PartyPopover] Room synced');
+		console.log('[PartyPopover] Room synced, room data:', room);
+
+		// If we're in loading view and received room data, show room view
+		// This handles the case when joining (server sends 'sync' not 'room')
+		if (loadingView && !loadingView.classList.contains('party-view-hidden') && room && room.id) {
+			logger.info('[PartyPopover] Transitioning from loading to room view');
+			console.log('[PartyPopover] Transitioning from loading to room view');
+			showView('room');
+			updatePinDisplay(room.id);
+			renderMessages();
+		}
 
 		renderParticipants();
 	});

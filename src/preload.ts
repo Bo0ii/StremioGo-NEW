@@ -955,86 +955,129 @@ async function installBundledAddons(): Promise<void> {
         // Check if already installed
         const alreadyInstalled = localStorage.getItem(STORAGE_KEYS.BUNDLED_ADDONS_INSTALLED) === 'true';
         if (alreadyInstalled) {
+            logger.info('Bundled addons already marked as installed');
             return;
         }
 
         // Get auth key from profile (user must be logged in)
         const profileStr = localStorage.getItem('profile');
         if (!profileStr) {
-            return; // User not logged in yet
+            logger.info('User not logged in yet, skipping addon installation');
+            return;
         }
 
         let profile;
         try {
             profile = JSON.parse(profileStr);
-        } catch {
-            return; // Invalid profile data
+        } catch (error) {
+            logger.warn('Invalid profile data:', error);
+            return;
         }
 
         const authKey = profile?.auth?.key;
         if (!authKey) {
-            return; // User not authenticated
+            logger.warn('No auth key found in profile');
+            return;
         }
 
+        logger.info('Starting bundled addon installation process...');
+
         // Get current addons from Stremio API
+        logger.info('Fetching current addons from Stremio API...');
         const getResponse = await fetch('https://api.strem.io/api/addonCollectionGet', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ type: 'AddonCollectionGet', authKey })
         });
 
+        if (!getResponse.ok) {
+            logger.error(`Failed to fetch current addons: HTTP ${getResponse.status}`);
+            return;
+        }
+
         const getData = await getResponse.json();
-        if (!getData.result || !getData.result.addons) {
-            logger.warn('Failed to fetch current addons');
+        if (!getData.result || !Array.isArray(getData.result.addons)) {
+            logger.error('Invalid response from addonCollectionGet:', getData);
             return;
         }
 
         const existingAddons = getData.result.addons || [];
+        logger.info(`Found ${existingAddons.length} existing addon(s)`);
+
         const existingUrls = new Set(
             existingAddons.map((addon: any) => addon.transportUrl || addon.manifestUrl)
         );
 
         // Filter out addons that are already installed
         const addonsToInstall = BUNDLED_ADDONS.filter(url => !existingUrls.has(url));
-        
+
+        logger.info(`Addons to install: ${addonsToInstall.length} of ${BUNDLED_ADDONS.length}`);
+
         if (addonsToInstall.length === 0) {
-            // All addons already installed, mark as done
-            localStorage.setItem(STORAGE_KEYS.BUNDLED_ADDONS_INSTALLED, 'true');
-            logger.info('All bundled addons already installed');
-            return;
+            // All addons already installed, verify they're actually there
+            const allPresent = BUNDLED_ADDONS.every(url => existingUrls.has(url));
+            if (allPresent) {
+                localStorage.setItem(STORAGE_KEYS.BUNDLED_ADDONS_INSTALLED, 'true');
+                logger.info('All bundled addons verified as installed');
+                return;
+            } else {
+                logger.warn('Bundled addons missing despite check - continuing installation');
+            }
         }
 
         // Fetch manifests for new addons
+        logger.info('Fetching manifests for new addons...');
         const newAddons = [];
+        const failedAddons = [];
+
         for (const addonUrl of addonsToInstall) {
             try {
-                const manifestResponse = await fetch(addonUrl);
+                logger.info(`Fetching manifest from: ${addonUrl}`);
+                const manifestResponse = await fetch(addonUrl, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+
                 if (!manifestResponse.ok) {
-                    logger.warn(`Failed to fetch manifest for ${addonUrl}`);
+                    logger.error(`Failed to fetch manifest for ${addonUrl}: HTTP ${manifestResponse.status}`);
+                    failedAddons.push(addonUrl);
                     continue;
                 }
+
                 const manifest = await manifestResponse.json();
-                
+
+                if (!manifest || !manifest.id || !manifest.name) {
+                    logger.error(`Invalid manifest from ${addonUrl}:`, manifest);
+                    failedAddons.push(addonUrl);
+                    continue;
+                }
+
                 newAddons.push({
                     transportUrl: addonUrl,
                     manifestUrl: addonUrl,
                     manifest: manifest
                 });
-                logger.info(`Fetched manifest for ${manifest.name || addonUrl}`);
+                logger.info(`✓ Successfully fetched manifest for "${manifest.name}" (${manifest.id})`);
             } catch (error) {
-                logger.warn(`Error fetching manifest for ${addonUrl}:`, error);
+                logger.error(`Error fetching manifest for ${addonUrl}:`, error);
+                failedAddons.push(addonUrl);
             }
         }
 
         if (newAddons.length === 0) {
-            logger.warn('No new addons to install');
+            logger.error('Failed to fetch any addon manifests. Failed URLs:', failedAddons);
             return;
+        }
+
+        if (failedAddons.length > 0) {
+            logger.warn(`Failed to fetch ${failedAddons.length} addon manifest(s):`, failedAddons);
         }
 
         // Combine existing addons with new ones
         const updatedAddons = [...existingAddons, ...newAddons];
+        logger.info(`Preparing to install ${newAddons.length} new addon(s)...`);
 
-        // Install via Stremio API (silently, no notifications)
+        // Install via Stremio API
         const setResponse = await fetch('https://api.strem.io/api/addonCollectionSet', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1045,17 +1088,61 @@ async function installBundledAddons(): Promise<void> {
             })
         });
 
+        if (!setResponse.ok) {
+            logger.error(`Failed to install addons: HTTP ${setResponse.status}`);
+            return;
+        }
+
         const setData = await setResponse.json();
-        
+
         if (setData.result?.success) {
-            localStorage.setItem(STORAGE_KEYS.BUNDLED_ADDONS_INSTALLED, 'true');
-            logger.info(`Successfully installed ${newAddons.length} bundled addon(s) silently`);
-            // Don't reload - install silently without disrupting user experience
+            // Verify installation by checking the collection again
+            logger.info('Installation API call succeeded, verifying...');
+
+            const verifyResponse = await fetch('https://api.strem.io/api/addonCollectionGet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'AddonCollectionGet', authKey })
+            });
+
+            if (verifyResponse.ok) {
+                const verifyData = await verifyResponse.json();
+                if (verifyData.result?.addons) {
+                    const verifyUrls = new Set(
+                        verifyData.result.addons.map((addon: any) => addon.transportUrl || addon.manifestUrl)
+                    );
+                    const allInstalled = BUNDLED_ADDONS.every(url => verifyUrls.has(url));
+
+                    if (allInstalled) {
+                        localStorage.setItem(STORAGE_KEYS.BUNDLED_ADDONS_INSTALLED, 'true');
+                        logger.info(`✓ Successfully installed and verified ${newAddons.length} bundled addon(s)`);
+                        logger.info('Installed addons:', newAddons.map(a => a.manifest.name).join(', '));
+
+                        // Reload to update UI with new addons
+                        setTimeout(() => {
+                            logger.info('Reloading to show bundled addons...');
+                            window.location.reload();
+                        }, 1000);
+                    } else {
+                        logger.error('Installation reported success but verification failed - addons not found in collection');
+                        logger.error('Expected URLs:', BUNDLED_ADDONS);
+                        logger.error('Found URLs:', Array.from(verifyUrls));
+                    }
+                }
+            } else {
+                logger.warn('Verification request failed but installation succeeded - marking as installed');
+                localStorage.setItem(STORAGE_KEYS.BUNDLED_ADDONS_INSTALLED, 'true');
+
+                // Reload to update UI
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            }
         } else {
-            logger.warn('Failed to install bundled addons:', setData.result?.error);
+            logger.error('Failed to install bundled addons. API response:', setData);
         }
     } catch (error) {
-        logger.error('Error installing bundled addons:', error);
+        logger.error('Critical error installing bundled addons:', error);
     }
 }
 
