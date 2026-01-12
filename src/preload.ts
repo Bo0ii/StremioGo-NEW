@@ -3266,6 +3266,85 @@ function escapeHtml(text: string): string {
 }
 
 /**
+ * Quick chat panel - press C key in player to toggle
+ */
+let quickChatOpen = false;
+
+function toggleQuickChat(): void {
+    if (!partyService.connected || !partyService.room) return;
+    quickChatOpen ? closeQuickChat() : openQuickChat();
+}
+
+function openQuickChat(): void {
+    if (document.getElementById('party-quick-chat')) return;
+    quickChatOpen = true;
+
+    const panel = document.createElement('div');
+    panel.id = 'party-quick-chat';
+    panel.style.cssText = `position: fixed; bottom: 80px; right: 20px; width: 320px; max-height: 300px; background: rgba(15, 15, 17, 0.95); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; z-index: 999999; display: flex; flex-direction: column; animation: quickChatSlideIn 0.2s ease-out; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);`;
+    panel.innerHTML = `<div style="padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between;"><span style="color: #10b981; font-weight: 600; font-size: 13px;">Party Chat (${partyService.room?.members.length || 0})</span><span style="color: rgba(255,255,255,0.4); font-size: 11px;">C or Esc to close</span></div><div id="party-quick-chat-messages" style="flex: 1; overflow-y: auto; padding: 10px 14px; max-height: 180px; display: flex; flex-direction: column; gap: 6px; scrollbar-width: none;"></div><div style="padding: 10px 14px; border-top: 1px solid rgba(255,255,255,0.1);"><input type="text" id="party-quick-chat-input" placeholder="Type a message..." maxlength="500" style="width: 100%; padding: 10px 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: white; font-size: 13px; outline: none; box-sizing: border-box;" /></div>`;
+
+    if (!document.getElementById('party-quick-chat-styles')) {
+        const style = document.createElement('style');
+        style.id = 'party-quick-chat-styles';
+        style.textContent = `@keyframes quickChatSlideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } } @keyframes quickChatSlideOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(20px); } } #party-quick-chat-messages::-webkit-scrollbar { display: none; } #party-quick-chat-input:focus { border-color: #10b981; background: rgba(255,255,255,0.1); }`;
+        document.head.appendChild(style);
+    }
+    document.body.appendChild(panel);
+
+    const messagesContainer = document.getElementById('party-quick-chat-messages');
+    if (messagesContainer) {
+        partyService.messages.slice(-10).forEach(msg => {
+            const msgEl = document.createElement('div');
+            msgEl.style.cssText = 'font-size: 12px; color: rgba(255,255,255,0.9);';
+            if (msg.senderId === 'system') { msgEl.style.cssText += 'color: rgba(255,255,255,0.5); font-style: italic; text-align: center;'; msgEl.textContent = msg.text; }
+            else { msgEl.innerHTML = `<strong style="color: ${msg.isHost ? '#fbbf24' : '#10b981'};">${escapeHtml(msg.senderName)}:</strong> ${escapeHtml(msg.text)}`; }
+            messagesContainer.appendChild(msgEl);
+        });
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    const input = document.getElementById('party-quick-chat-input') as HTMLInputElement;
+    if (input) {
+        setTimeout(() => input.focus(), 50);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && input.value.trim()) { partyService.sendChatMessage(input.value.trim()); input.value = ''; } else if (e.key === 'Escape') { closeQuickChat(); } e.stopPropagation(); });
+    }
+
+    const messageHandler = (msg: { senderName: string; text: string; senderId: string; isHost: boolean }) => {
+        const container = document.getElementById('party-quick-chat-messages');
+        if (container) {
+            const msgEl = document.createElement('div');
+            msgEl.style.cssText = 'font-size: 12px; color: rgba(255,255,255,0.9);';
+            if (msg.senderId === 'system') { msgEl.style.cssText += 'color: rgba(255,255,255,0.5); font-style: italic; text-align: center;'; msgEl.textContent = msg.text; }
+            else { msgEl.innerHTML = `<strong style="color: ${msg.isHost ? '#fbbf24' : '#10b981'};">${escapeHtml(msg.senderName)}:</strong> ${escapeHtml(msg.text)}`; }
+            container.appendChild(msgEl);
+            container.scrollTop = container.scrollHeight;
+        }
+    };
+    partyService.on('message', messageHandler);
+    (panel as any)._messageHandler = messageHandler;
+}
+
+function closeQuickChat(): void {
+    const panel = document.getElementById('party-quick-chat');
+    if (panel) {
+        if ((panel as any)._messageHandler) partyService.off('message', (panel as any)._messageHandler);
+        panel.style.animation = 'quickChatSlideOut 0.2s ease-out forwards';
+        setTimeout(() => panel.remove(), 200);
+    }
+    quickChatOpen = false;
+}
+
+// C key shortcut for quick chat
+document.addEventListener('keydown', (e) => {
+    if (!location.hash.includes('#/player')) return;
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || (activeEl as HTMLElement).isContentEditable)) return;
+    if (e.key === 'c' || e.key === 'C') { e.preventDefault(); toggleQuickChat(); }
+    if (e.key === 'Escape' && quickChatOpen) closeQuickChat();
+});
+
+/**
  * Sync current stream to party members
  * Only the party owner can trigger stream sync
  */

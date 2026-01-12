@@ -88,11 +88,17 @@ class EnhancedPlayer {
     }
 
     addPartyButton() {
+        // Only add in player view
+        if (!location.hash.includes('#/player')) {
+            return;
+        }
+
         const controlBarSelectors = [
             '.control-bar-buttons-menu-container-M6L0_',
             "[class*='control-bar-buttons']",
             "[class*='control-bar'] [class*='buttons']",
-            ".control-bar-container-xsWA7 [class*='buttons']"
+            ".control-bar-container-xsWA7 [class*='buttons']",
+            "[class*='control-bar-container'] [class*='buttons-menu-container']"
         ];
 
         let controlBarContainer = null;
@@ -106,6 +112,8 @@ class EnhancedPlayer {
         }
 
         if (controlBarContainer.querySelector('.party-player-button')) {
+            // Button exists, just update indicator
+            this.updatePartyIndicator();
             return;
         }
 

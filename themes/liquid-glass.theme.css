@@ -24,14 +24,17 @@
 
 ::-webkit-scrollbar-track {
   display: none !important;
+  background: transparent !important;
 }
 
 ::-webkit-scrollbar-thumb {
   display: none !important;
+  background: transparent !important;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   display: none !important;
+  background: transparent !important;
 }
 
 /* change the accent color from purple to white */
@@ -414,14 +417,25 @@ html, body {
   -moz-osx-font-smoothing: grayscale !important;
   text-rendering: optimizeLegibility !important;
   width: 100% !important;
+  max-width: 100vw !important;
   margin: 0 !important;
   padding: 0 !important;
+  /* Prevent scrollbar gutter from reserving space */
+  scrollbar-gutter: auto !important;
 }
 
-#app, #app > div {
+#app,
+#app > div,
+[class*="router"],
+[class*="routes-container"],
+[class*="route-content"] {
   width: 100% !important;
+  max-width: 100vw !important;
   margin: 0 !important;
   padding-right: 0 !important;
+  box-sizing: border-box !important;
+  overflow-x: hidden !important;
+  scrollbar-gutter: auto !important;
 }
 
 /* ========================= NAV BAR / HEADER ========================= */
