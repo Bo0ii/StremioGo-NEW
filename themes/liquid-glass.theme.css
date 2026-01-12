@@ -2203,8 +2203,8 @@ body.performance-mode .meta-item-container-Tj0Ib .poster-container-qkw48:hover .
     border: 1px solid rgba(255, 255, 255, 0.04) !important;
 }
 
-/* Peario Watch Together button - make it circular like other action buttons */
-#peario-watch-button {
+/* Party Watch Together button - make it circular like other action buttons */
+#party-watch-button {
     border-radius: 50% !important;
     aspect-ratio: 1 !important;
     color: #ffffff !important;
@@ -2214,14 +2214,14 @@ body.performance-mode .meta-item-container-Tj0Ib .poster-container-qkw48:hover .
 }
 
 /* Ensure the icon is white and centered */
-#peario-watch-button svg {
+#party-watch-button svg {
     fill: #ffffff !important;
     color: #ffffff !important;
     display: block !important;
     margin: auto !important;
 }
 
-#peario-watch-button svg path {
+#party-watch-button svg path {
     fill: #ffffff !important;
     color: #ffffff !important;
 }
