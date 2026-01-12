@@ -158,6 +158,7 @@ jobs:
       contents: write
       attestations: write
       id-token: write
+      artifact-metadata: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -313,34 +314,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install GitHub CLI
-        run: |
-          type -p curl >/dev/null || (apt update && apt install curl -y)
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-          && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-          && apt update \
-          && apt install gh -y
-
-      - name: Generate and upload attestations for release assets
-        run: |
-          cd release-artifacts
-          TAG_NAME="${{ env.TAG_NAME }}"
-          
-          echo "Generating attestations for release assets..."
-          
-          # Generate SLSA provenance attestations for each installer
-          for file in *.exe *.dmg *.AppImage; do
-            if [ -f "$file" ]; then
-              echo "Creating attestation for: $file"
-              # Create attestation and attach to the release
-              gh attestation attest "$file" \
-                --predicate-type https://slsa.dev/provenance/v1 \
-                --format json || echo "Warning: Failed to create attestation for $file"
-            fi
-          done
-          
-          echo "Attestations created for release assets"
-          echo "Users can verify attestations with: gh release verify $TAG_NAME"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Attest Build Provenance
+        uses: actions/attest-build-provenance@v3.1.0
+        with:
+          subject-path: |
+            release-artifacts/*.exe
+            release-artifacts/*.dmg
+            release-artifacts/*.AppImage
+          push-to-registry: false
+          show-summary: true
