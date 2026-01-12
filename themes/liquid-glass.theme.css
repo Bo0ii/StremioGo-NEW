@@ -10,28 +10,28 @@
 
 * {
   font-family: 'Inter', sans-serif !important;
-  /* Thin overlay scrollbar - macOS style */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  /* Hide scrollbars completely */
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
-/* WebKit scrollbar - thin macOS style */
+/* WebKit scrollbar - completely hidden */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  display: none !important;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
+  display: none !important;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  display: none !important;
 }
 
 /* change the accent color from purple to white */
@@ -405,18 +405,23 @@ body.scrolling-active [class*="poster-container"] > *:not(img):not([class*="post
     backdrop-filter: var(--backdrop-filter) !important;
     border: 1px solid rgba(255, 255, 255, 0.04) !important; */
 
-html body {
+html, body {
   background: var(--background) !important;
-  overflow-y: scroll !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
   scroll-behavior: smooth !important;
   -webkit-font-smoothing: antialiased !important;
   -moz-osx-font-smoothing: grayscale !important;
   text-rendering: optimizeLegibility !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
-::-webkit-scrollbar {
-  width: 0;  /* removes scrollbar track */
-  height: 0;
+#app, #app > div {
+  width: 100% !important;
+  margin: 0 !important;
+  padding-right: 0 !important;
 }
 
 /* ========================= NAV BAR / HEADER ========================= */

@@ -4391,8 +4391,17 @@ CREATE TRIGGER settings_updated_at BEFORE UPDATE ON profile_settings
             const existingOld = document.querySelector('.sgp-switcher');
             if (existingOld) existingOld.remove();
 
-            // Find the nav bar buttons container (where search and fullscreen icons are)
-            const navBar = document.querySelector('.horizontal-nav-bar-container-Y_zvK');
+            // Find the VISIBLE nav bar (width > 0)
+            const allNavBars = document.querySelectorAll('[class*="horizontal-nav-bar-container"]');
+            let navBar = null;
+
+            allNavBars.forEach(nav => {
+                const rect = nav.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {
+                    navBar = nav;
+                }
+            });
+
             if (!navBar) {
                 setTimeout(() => this.injectSwitcher(), 1000);
                 return;

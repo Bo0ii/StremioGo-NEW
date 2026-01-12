@@ -529,10 +529,10 @@ export function openPartyPopover(contentInfo?: { id: string; type: string; name:
 		currentContentInfo = getContentFromPage();
 	}
 
+	// Allow opening without content info - use fallback for nav bar access
 	if (!currentContentInfo) {
-		logger.error('[PartyPopover] No content info available');
-		console.error('[PartyPopover] No content info available');
-		return;
+		logger.info('[PartyPopover] No content info available, using fallback');
+		currentContentInfo = { id: '', type: 'unknown', name: 'Watch Party' };
 	}
 
 	// Remove existing popover

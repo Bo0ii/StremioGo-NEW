@@ -1566,28 +1566,28 @@ function injectAppIconInGlassTheme(): void {
         logger.info("App icon injected in glass theme at top-left corner: " + iconUrl);
     };
 
-    // Function to find and inject icon into the MAIN navigation bar only
+    // Function to find and inject icon into the VISIBLE navigation bar only
     const tryInjectIcon = (): void => {
-        // IMPORTANT: Target only the main top navigation bar inside main-nav-bars-container
-        // Do NOT target secondary nav bars inside route content (those are page-specific)
-        const selectors = [
-            // Primary: horizontal nav bar inside main-nav-bars-container (this is the main top nav)
-            '[class*="main-nav-bars-container"] [class*="horizontal-nav-bar"]',
-            '[class*="main-nav-bars-container"] nav[class*="horizontal"]',
-            // Fallback with specific class names (may break when Stremio updates)
-            '.main-nav-bars-container-wNjS5 .horizontal-nav-bar-container-Y_zvK',
-            '.main-nav-bars-container-wNjS5 [class*="horizontal-nav-bar"]'
-        ];
+        // Find all horizontal nav bars inside main-nav-bars-container
+        const allNavBars = document.querySelectorAll('[class*="main-nav-bars-container"] [class*="horizontal-nav-bar-container"]');
 
-        for (const selector of selectors) {
-            const navBar = document.querySelector(selector);
-            if (navBar) {
-                injectIconIntoNavBar(navBar);
-                return; // Successfully injected, exit
+        // Find the VISIBLE nav bar (width > 0)
+        let visibleNavBar: HTMLElement | undefined;
+        for (let i = 0; i < allNavBars.length; i++) {
+            const navBar = allNavBars[i] as HTMLElement;
+            const rect = navBar.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                visibleNavBar = navBar;
+                break;
             }
         }
-        
-        // If no nav bar found, schedule a retry
+
+        if (visibleNavBar) {
+            injectIconIntoNavBar(visibleNavBar);
+            return; // Successfully injected, exit
+        }
+
+        // If no visible nav bar found, schedule a retry
         if (iconRetryTimeout) {
             clearTimeout(iconRetryTimeout);
         }
@@ -1693,11 +1693,19 @@ function initNavBarFixes(): void {
             });
         }
 
-        // IMPORTANT: Target only the MAIN nav bar, not secondary nav bars in route content
-        const mainNavContainer = document.querySelector('[class*="main-nav-bars-container"]');
-        if (!mainNavContainer) return;
+        // Find the VISIBLE horizontal nav bar (width > 0)
+        const allNavBars = document.querySelectorAll('[class*="main-nav-bars-container"] [class*="horizontal-nav-bar"]');
+        let mainHorizontalNav: HTMLElement | undefined;
 
-        const mainHorizontalNav = mainNavContainer.querySelector('[class*="horizontal-nav-bar"]');
+        for (let i = 0; i < allNavBars.length; i++) {
+            const navBar = allNavBars[i] as HTMLElement;
+            const rect = navBar.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                mainHorizontalNav = navBar;
+                break;
+            }
+        }
+
         if (!mainHorizontalNav) return;
 
         // Find buttons-container in main nav bar
@@ -1705,7 +1713,7 @@ function initNavBarFixes(): void {
 
         // Remove any old cloned containers before potentially adding a new one
         const oldClones = mainHorizontalNav.querySelectorAll('.streamgo-buttons-clone');
-        oldClones.forEach(clone => clone.remove());
+        oldClones.forEach((clone: Element) => clone.remove());
 
         // If buttons-container doesn't exist in main nav, try to find one elsewhere or recreate
         if (!buttonsContainer) {
@@ -1746,8 +1754,64 @@ function initNavBarFixes(): void {
                 transform: translateY(-50%) !important;
                 z-index: 100 !important;
                 align-items: center !important;
-                gap: 8px !important;
+                gap: 10px !important;
+                margin-left: 20px !important;
             `;
+
+            // Ensure search bar doesn't overlap with buttons
+            const searchBar = mainHorizontalNav.querySelector('[class*="search-bar"]') as HTMLElement;
+            if (searchBar) {
+                searchBar.style.marginRight = '80px';
+            }
+
+            // Inject party button into horizontal nav buttons-container (after fullscreen)
+            if (!buttonsContainer.querySelector('#nav-party-btn')) {
+                const fullscreenBtn = buttonsContainer.querySelector('[title*="fullscreen"]');
+                if (fullscreenBtn) {
+                    const partyBtn = document.createElement('div');
+                    partyBtn.id = 'nav-party-btn';
+                    partyBtn.setAttribute('tabindex', '-1');
+                    partyBtn.setAttribute('title', 'Watch Party');
+                    partyBtn.className = fullscreenBtn.className;
+                    partyBtn.innerHTML = `
+                        <svg class="icon-T8MU6" viewBox="0 0 24 24" style="width: 22px; height: 22px;">
+                            <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" style="fill: currentcolor;"></path>
+                        </svg>
+                        <span id="nav-party-indicator" style="display: none; position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; background: #22c55e; border-radius: 50%; border: 2px solid rgba(0,0,0,0.3);"></span>
+                    `;
+                    partyBtn.style.position = 'relative';
+                    partyBtn.style.cursor = 'pointer';
+
+                    // Insert after fullscreen button
+                    if (fullscreenBtn.nextSibling) {
+                        fullscreenBtn.parentElement?.insertBefore(partyBtn, fullscreenBtn.nextSibling);
+                    } else {
+                        fullscreenBtn.parentElement?.appendChild(partyBtn);
+                    }
+
+                    // Add click handler
+                    partyBtn.addEventListener('click', () => {
+                        import("./components/party-popover/partyPopover").then(({ openPartyPopover }) => {
+                            openPartyPopover();
+                        });
+                    });
+
+                    // Add hover effect
+                    partyBtn.addEventListener('mouseenter', () => {
+                        partyBtn.style.color = '#10b981';
+                    });
+                    partyBtn.addEventListener('mouseleave', () => {
+                        if (!partyService.connected) {
+                            partyBtn.style.color = '';
+                        }
+                    });
+
+                    logger.info('Injected party button into horizontal nav bar');
+                }
+            }
+
+            // Update party button state
+            updateNavPartyButtonState();
         }
 
         // Also ensure any buttons-containers in other nav bars are visible
@@ -2052,6 +2116,27 @@ function updateTitleBarPartyState(): void {
     } else {
         partyBtn.classList.remove("party-active");
         partyBtn.setAttribute("title", "Watch Party");
+    }
+}
+
+// Update nav bar party button state (horizontal nav)
+function updateNavPartyButtonState(): void {
+    const partyBtn = document.querySelector("#nav-party-btn") as HTMLElement;
+    const indicator = document.querySelector("#nav-party-indicator") as HTMLElement;
+    if (!partyBtn) return;
+
+    if (partyService.connected && partyService.room) {
+        partyBtn.style.color = '#10b981';
+        partyBtn.setAttribute("title", `Watch Party: ${partyService.room.name} (${partyService.room.members.length} members)`);
+        if (indicator) {
+            indicator.style.display = 'block';
+        }
+    } else {
+        partyBtn.style.color = '';
+        partyBtn.setAttribute("title", "Watch Party");
+        if (indicator) {
+            indicator.style.display = 'none';
+        }
     }
 }
 
@@ -2899,25 +2984,29 @@ let isRemoteAction = false; // Flag to prevent feedback loops
 
 // Video event handlers for party sync
 function onPartyVideoPlay(): void {
-    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
-    logger.info('[Party] Host played video - broadcasting');
-    partyService.broadcastStateChange(partyVideoElement!, true);
+    if (isRemoteAction || !partyService.connected) return;
+    // Any member can broadcast play (allows non-hosts to control playback)
+    logger.info('[Party] Member played video - broadcasting');
+    partyService.broadcastMemberStateChange(partyVideoElement!, true);
 }
 
 function onPartyVideoPause(): void {
-    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
-    logger.info('[Party] Host paused video - broadcasting');
-    partyService.broadcastStateChange(partyVideoElement!, true);
+    if (isRemoteAction || !partyService.connected) return;
+    // Any member can broadcast pause (allows non-hosts to control playback)
+    logger.info('[Party] Member paused video - broadcasting');
+    partyService.broadcastMemberStateChange(partyVideoElement!, true);
 }
 
 function onPartyVideoSeeked(): void {
-    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
-    logger.info('[Party] Host seeked video - broadcasting');
-    partyService.broadcastStateChange(partyVideoElement!, true);
+    if (isRemoteAction || !partyService.connected) return;
+    // Any member can seek (allows non-hosts to control playback)
+    logger.info('[Party] Member seeked video - broadcasting');
+    partyService.broadcastMemberStateChange(partyVideoElement!, true);
 }
 
 function onPartyVideoRateChange(): void {
     if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
+    // Only hosts can change playback rate
     logger.info('[Party] Host changed playback rate - broadcasting');
     partyService.broadcastStateChange(partyVideoElement!, false);
 }
@@ -3069,10 +3158,29 @@ function setupPartyListeners(): void {
     // Update title bar when room state changes
     partyService.on('room', () => {
         updateTitleBarPartyState();
+        updateNavPartyButtonState();
     });
 
     partyService.on('disconnected', () => {
         updateTitleBarPartyState();
+        updateNavPartyButtonState();
+    });
+
+    // Expose partyService to window for plugins
+    (window as any).partyService = partyService;
+
+    // Expose openPartyPopover to window for plugins
+    (window as any).openPartyPopover = () => {
+        import("./components/party-popover/partyPopover").then(({ openPartyPopover }) => {
+            openPartyPopover();
+        });
+    };
+
+    // Listen for custom event from plugins
+    window.addEventListener('streamgo:openPartyPopover', () => {
+        import("./components/party-popover/partyPopover").then(({ openPartyPopover }) => {
+            openPartyPopover();
+        });
     });
 
     logger.info('[Party] Party listeners initialized');
@@ -3115,7 +3223,7 @@ function showPartyChatOverlay(senderName: string, text: string): void {
         animation: partyChatFadeIn 0.3s ease-out;
         opacity: 0.85;
     `;
-    msgEl.innerHTML = `<strong style="color: #7b5bf5;">${escapeHtml(senderName)}:</strong> ${escapeHtml(text)}`;
+    msgEl.innerHTML = `<strong style="color: #10b981;">${escapeHtml(senderName)}:</strong> ${escapeHtml(text)}`;
 
     // Add animation styles if not present
     if (!document.getElementById('party-chat-overlay-styles')) {
@@ -3391,7 +3499,7 @@ function injectAboutSectionStyles(): void {
     style.id = 'enhanced-about-css';
     style.textContent = `
         .about-link {
-            color: #7b5bf5 !important;
+            color: #10b981 !important;
             text-decoration: none;
             font-weight: 600;
             transition: color 0.2s ease;

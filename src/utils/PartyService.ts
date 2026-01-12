@@ -12,7 +12,7 @@ const WATCHPARTY_SERVERS: Record<string, string> = {
 // Timing constants
 const PING_TIMEOUT = 34000; // 30s ping interval + 4s buffer
 const SYNC_INTERVAL = 1000;
-const MAX_SYNC_DELAY_MS = 300; // Max delay before forcing seek
+const MAX_SYNC_DELAY_MS = 1000; // 1 second tolerance before forcing seek
 
 // Storage keys for persisting user preferences
 const STORAGE_KEYS = {
@@ -511,10 +511,20 @@ class PartyService extends EventEmitter {
 	}
 
 	/**
-	 * Broadcast command to party (host only)
+	 * Broadcast command to party (host only for most commands)
 	 */
 	broadcastCommand(command: string, data: unknown): void {
 		if (!this.socket || !this.isHost) return;
+
+		const message = `cmd:${command}:${JSON.stringify(data)}`;
+		this.socket.send(message);
+	}
+
+	/**
+	 * Broadcast command to party (any member - for pause/play)
+	 */
+	broadcastCommandAsMember(command: string, data: unknown): void {
+		if (!this.socket) return;
 
 		const message = `cmd:${command}:${JSON.stringify(data)}`;
 		this.socket.send(message);
@@ -589,11 +599,26 @@ class PartyService extends EventEmitter {
 
 	/**
 	 * Broadcast immediate state change (play/pause/seek)
+	 * Hosts can broadcast all state changes
+	 * Non-hosts can only broadcast pause (via broadcastPause)
 	 */
 	broadcastStateChange(video: HTMLVideoElement, force: boolean = false): void {
 		if (!this.isHost) return;
 
 		this.broadcastCommand('state', {
+			time: video.currentTime,
+			paused: video.paused,
+			playbackSpeed: video.playbackRate,
+			force,
+		});
+	}
+
+	/**
+	 * Broadcast pause/play from any member (not just host)
+	 * This allows all party members to pause the video for everyone
+	 */
+	broadcastMemberStateChange(video: HTMLVideoElement, force: boolean = false): void {
+		this.broadcastCommandAsMember('state', {
 			time: video.currentTime,
 			paused: video.paused,
 			playbackSpeed: video.playbackRate,

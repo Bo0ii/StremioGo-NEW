@@ -142,8 +142,8 @@ function onMessage(ws, data) {
       updateParty(party);
     }
   }
-  // Command broadcast (host only)
-  else if (ws.isHost && data.startsWith("cmd:")) {
+  // Command broadcast (any member can send - allows pause/play for all)
+  else if (data.startsWith("cmd:")) {
     const party = parties[ws.partyCode];
     if (!party) return;
 

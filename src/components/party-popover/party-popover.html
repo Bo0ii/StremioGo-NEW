@@ -191,10 +191,10 @@
 
     .party-popover-container {
         position: relative !important;
-        width: 420px !important;
+        width: 480px !important;
         max-width: calc(100vw - 40px) !important;
-        height: 600px !important;
-        max-height: calc(100vh - 100px) !important;
+        height: 680px !important;
+        max-height: calc(100vh - 80px) !important;
         background: rgba(18, 18, 20, 0.98) !important;
         border: 1px solid rgba(255, 255, 255, 0.12) !important;
         border-radius: 16px !important;
@@ -231,7 +231,7 @@
     }
 
     .party-popover-title svg {
-        color: #7b5bf5 !important;
+        color: #10b981 !important;
         flex-shrink: 0 !important;
     }
 
@@ -242,7 +242,7 @@
         min-width: 24px !important;
         height: 20px !important;
         padding: 0 6px !important;
-        background: #7b5bf5 !important;
+        background: #10b981 !important;
         color: white !important;
         border-radius: 10px !important;
         font-size: 12px !important;
@@ -323,7 +323,7 @@
     }
 
     .party-tab-active {
-        background: #7b5bf5 !important;
+        background: #10b981 !important;
         color: white !important;
     }
 
@@ -362,7 +362,7 @@
     .party-checkbox-group input[type="checkbox"] {
         width: 18px !important;
         height: 18px !important;
-        accent-color: #7b5bf5 !important;
+        accent-color: #10b981 !important;
         cursor: pointer !important;
     }
 
@@ -388,7 +388,7 @@
 
     .party-input:focus {
         outline: none !important;
-        border-color: #7b5bf5 !important;
+        border-color: #10b981 !important;
         background: rgba(255, 255, 255, 0.08) !important;
     }
 
@@ -424,14 +424,14 @@
     }
 
     .party-btn-primary {
-        background: #7b5bf5 !important;
+        background: #10b981 !important;
         color: white !important;
     }
 
     .party-btn-primary:hover {
-        background: #6a4ce0 !important;
+        background: #059669 !important;
         transform: translateY(-1px) !important;
-        box-shadow: 0 4px 12px rgba(123, 91, 245, 0.4) !important;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4) !important;
     }
 
     .party-btn-secondary {
@@ -475,12 +475,12 @@
     }
 
     .party-icon-btn-primary {
-        background: #7b5bf5 !important;
+        background: #10b981 !important;
         color: white !important;
     }
 
     .party-icon-btn-primary:hover {
-        background: #6a4ce0 !important;
+        background: #059669 !important;
     }
 
     /* Error */
@@ -502,8 +502,8 @@
     .party-room-info {
         margin-bottom: 16px !important;
         padding: 14px !important;
-        background: rgba(123, 91, 245, 0.1) !important;
-        border: 1px solid rgba(123, 91, 245, 0.2) !important;
+        background: rgba(16, 185, 129, 0.1) !important;
+        border: 1px solid rgba(16, 185, 129, 0.2) !important;
         border-radius: 12px !important;
     }
 
@@ -521,7 +521,7 @@
     }
 
     .party-room-name-row svg {
-        color: #7b5bf5 !important;
+        color: #10b981 !important;
     }
 
     .party-room-name {
@@ -546,7 +546,7 @@
     .party-pin-code {
         font-size: 18px !important;
         font-weight: 700 !important;
-        color: #7b5bf5 !important;
+        color: #10b981 !important;
         letter-spacing: 2px !important;
         font-family: 'Courier New', monospace !important;
     }
@@ -567,7 +567,7 @@
     }
 
     .party-section-header svg {
-        color: #7b5bf5 !important;
+        color: #10b981 !important;
     }
 
     .party-participants-list {
@@ -614,7 +614,7 @@
     .party-host-crown {
         width: 16px !important;
         height: 16px !important;
-        fill: #9370db !important;
+        fill: #fbbf24 !important;
     }
 
     .party-toggle-host-btn {
@@ -635,7 +635,7 @@
 
     .party-toggle-host-btn:hover {
         opacity: 1 !important;
-        background: rgba(147, 112, 219, 0.3) !important;
+        background: rgba(251, 191, 36, 0.3) !important;
     }
 
     .party-toggle-host-btn svg {
@@ -658,8 +658,8 @@
         display: flex !important;
         flex-direction: column !important;
         gap: 8px !important;
-        min-height: 100px !important;
-        max-height: 200px !important;
+        min-height: 150px !important;
+        max-height: 280px !important;
     }
 
     .party-chat-message {
@@ -686,7 +686,7 @@
     .party-chat-message-host {
         width: 14px !important;
         height: 14px !important;
-        fill: #9370db !important;
+        fill: #fbbf24 !important;
     }
 
     .party-chat-message-user {
@@ -727,8 +727,8 @@
     .party-spinner {
         width: 48px !important;
         height: 48px !important;
-        border: 4px solid rgba(123, 91, 245, 0.2) !important;
-        border-top-color: #7b5bf5 !important;
+        border: 4px solid rgba(16, 185, 129, 0.2) !important;
+        border-top-color: #10b981 !important;
         border-radius: 50% !important;
         animation: party-spin 0.8s linear infinite !important;
         margin: 0 auto 16px !important;
@@ -778,25 +778,18 @@
         letter-spacing: 0.5px !important;
     }
 
-    /* Scrollbar */
+    /* Scrollbar - Hidden */
     .party-participants-list::-webkit-scrollbar,
-    .party-chat-messages::-webkit-scrollbar {
-        width: 6px !important;
+    .party-chat-messages::-webkit-scrollbar,
+    .party-view::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
     }
 
-    .party-participants-list::-webkit-scrollbar-track,
-    .party-chat-messages::-webkit-scrollbar-track {
-        background: transparent !important;
-    }
-
-    .party-participants-list::-webkit-scrollbar-thumb,
-    .party-chat-messages::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.1) !important;
-        border-radius: 3px !important;
-    }
-
-    .party-participants-list::-webkit-scrollbar-thumb:hover,
-    .party-chat-messages::-webkit-scrollbar-thumb:hover {
-        background: rgba(255, 255, 255, 0.2) !important;
+    .party-participants-list,
+    .party-chat-messages,
+    .party-view {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
     }
 </style>

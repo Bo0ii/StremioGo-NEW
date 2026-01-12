@@ -68,82 +68,79 @@ export function injectPlusNavButton(): void {
 
 	plusButtonInjectionAttempts++;
 
-	// Wait for horizontal nav bar to be ready
-	Helpers.waitForElm(HORIZONTAL_NAV_SELECTOR).then(() => {
-		// Double-check not already injected (race condition protection)
-		if (document.getElementById('plus-nav-button')) {
-			updatePlusButtonSelectedState();
-			return;
+	// Find the Settings link in ANY visible nav bar
+	const allNavBars = document.querySelectorAll(HORIZONTAL_NAV_SELECTOR);
+	let settingsLink: Element | null = null;
+	let targetNavBar: HTMLElement | undefined;
+
+	for (let i = 0; i < allNavBars.length; i++) {
+		const navBar = allNavBars[i] as HTMLElement;
+		const rect = navBar.getBoundingClientRect();
+
+		// Only check visible nav bars
+		if (rect.width > 0 && rect.height > 0) {
+			const link = navBar.querySelector('a[href="#/settings"]');
+			if (link) {
+				settingsLink = link;
+				targetNavBar = navBar;
+				break;
+			}
 		}
+	}
 
-		const navBar = document.querySelector(HORIZONTAL_NAV_SELECTOR);
-		if (!navBar) {
-			// Retry after a short delay
-			setTimeout(() => injectPlusNavButton(), 500);
-			return;
-		}
+	// If Settings link not found in any visible nav bar, retry
+	if (!settingsLink || !targetNavBar) {
+		logger.info("[Plus] Settings link not found in visible nav bars, retrying...");
+		setTimeout(() => injectPlusNavButton(), 300);
+		return;
+	}
 
-		// Find Settings link - this is our anchor point for positioning
-		const settingsLink = navBar.querySelector('a[href="#/settings"]');
+	// Create Plus nav button
+	const plusButton = document.createElement('a');
+	plusButton.id = 'plus-nav-button';
+	plusButton.href = '#/plus';
+	plusButton.setAttribute('tabindex', '0');
+	plusButton.setAttribute('title', 'StreamGo Plus');
 
-		// If Settings link doesn't exist yet, wait and retry
-		if (!settingsLink) {
-			logger.info("[Plus] Settings link not found, retrying...");
-			setTimeout(() => injectPlusNavButton(), 300);
-			return;
-		}
+	// Copy class from Settings link for consistent styling
+	plusButton.className = settingsLink.className;
 
-		// Create Plus nav button
-		const plusButton = document.createElement('a');
-		plusButton.id = 'plus-nav-button';
-		plusButton.href = '#/plus';
-		plusButton.setAttribute('tabindex', '0');
-		plusButton.setAttribute('title', 'StreamGo Plus');
+	// Clone the inner structure from Settings link to match exactly
+	const settingsInner = settingsLink.innerHTML;
+	// Replace "Settings" text with "Plus"
+	plusButton.innerHTML = settingsInner.replace(/Settings/gi, 'Plus');
 
-		// Copy class from Settings link for consistent styling
-		plusButton.className = settingsLink.className;
+	// If there's an SVG icon, replace it with Plus icon or remove it
+	const existingSvg = plusButton.querySelector('svg');
+	if (existingSvg) {
+		existingSvg.remove();
+	}
 
-		// Clone the inner structure from Settings link to match exactly
-		const settingsInner = settingsLink.innerHTML;
-		// Replace "Settings" text with "Plus"
-		plusButton.innerHTML = settingsInner.replace(/Settings/gi, 'Plus');
+	// Ensure the Plus button inherits proper color (not default blue link color)
+	plusButton.style.color = 'inherit';
+	plusButton.style.textDecoration = 'none';
 
-		// If there's an SVG icon, replace it with Plus icon or remove it
-		const existingSvg = plusButton.querySelector('svg');
-		if (existingSvg) {
-			existingSvg.remove();
-		}
-
-		// Ensure the Plus button inherits proper color (not default blue link color)
-		plusButton.style.color = 'inherit';
-		plusButton.style.textDecoration = 'none';
-
-		// CRITICAL: Add click handler to prevent Stremio's router from handling the navigation
-		plusButton.addEventListener('click', (e) => {
-			e.preventDefault();
-			e.stopPropagation();
-			navigateToPlusPage();
-		});
-
-		// Insert AFTER Settings link (to the right of it)
-		if (settingsLink.parentElement) {
-			settingsLink.parentElement.insertBefore(plusButton, settingsLink.nextSibling);
-			logger.info("[Plus] Plus nav button injected after Settings");
-			plusButtonInjectionAttempts = 0; // Reset on success
-		} else {
-			// Fallback: append to nav bar
-			navBar.appendChild(plusButton);
-			logger.info("[Plus] Plus nav button appended to nav bar");
-			plusButtonInjectionAttempts = 0;
-		}
-
-		// Handle selected state based on current route
-		updatePlusButtonSelectedState();
-	}).catch(err => {
-		logger.warn("[Plus] Could not inject Plus nav button: " + err);
-		// Retry after delay
-		setTimeout(() => injectPlusNavButton(), 500);
+	// CRITICAL: Add click handler to prevent Stremio's router from handling the navigation
+	plusButton.addEventListener('click', (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		navigateToPlusPage();
 	});
+
+	// Insert AFTER Settings link (to the right of it)
+	if (settingsLink.parentElement) {
+		settingsLink.parentElement.insertBefore(plusButton, settingsLink.nextSibling);
+		logger.info("[Plus] Plus nav button injected after Settings");
+		plusButtonInjectionAttempts = 0; // Reset on success
+	} else {
+		// Fallback: append to target nav bar
+		targetNavBar.appendChild(plusButton);
+		logger.info("[Plus] Plus nav button appended to nav bar");
+		plusButtonInjectionAttempts = 0;
+	}
+
+	// Handle selected state based on current route
+	updatePlusButtonSelectedState();
 }
 
 // Reset injection attempts when called externally (e.g., on navigation)
