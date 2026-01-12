@@ -127,7 +127,29 @@ export function injectPlusNavButton(): void {
 		navigateToPlusPage();
 	});
 
-	// Insert AFTER Settings link (to the right of it)
+	// Verify the Settings link is actually in the target nav bar (not cloned from another)
+	const settingsNavBar = settingsLink.closest('[class*="horizontal-nav-bar-container"]') as HTMLElement;
+	const settingsNavRect = settingsNavBar?.getBoundingClientRect();
+
+	// If Settings link is in a collapsed nav, find it in the visible nav instead
+	if (!settingsNavRect || settingsNavRect.width === 0) {
+		logger.warn("[Plus] Settings link found in collapsed nav, searching visible nav...");
+
+		// Find the visible nav bar and append at the end
+		for (let i = 0; i < allNavBars.length; i++) {
+			const navBar = allNavBars[i] as HTMLElement;
+			const rect = navBar.getBoundingClientRect();
+			if (rect.width > 0 && rect.height > 0) {
+				navBar.appendChild(plusButton);
+				logger.info("[Plus] Plus nav button appended to visible nav bar");
+				plusButtonInjectionAttempts = 0;
+				updatePlusButtonSelectedState();
+				return;
+			}
+		}
+	}
+
+	// Insert AFTER Settings link (to the right of it) in the visible nav
 	if (settingsLink.parentElement) {
 		settingsLink.parentElement.insertBefore(plusButton, settingsLink.nextSibling);
 		logger.info("[Plus] Plus nav button injected after Settings");

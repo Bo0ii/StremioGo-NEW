@@ -216,6 +216,19 @@ jobs:
           echo "Renamed files:"
           ls -la
 
+      - name: Remove source code files from artifacts
+        run: |
+          cd release-artifacts
+          echo "Removing any source code files..."
+          # Remove TypeScript/JavaScript source files
+          find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) ! -name "*.min.js" -delete 2>/dev/null || true
+          # Remove source directories
+          rm -rf src/ dist/ node_modules/ .git/ 2>/dev/null || true
+          # Remove other source-related files
+          rm -f *.map tsconfig.json .eslintrc* 2>/dev/null || true
+          echo "Artifacts after cleanup:"
+          ls -la
+
       - name: Generate checksums
         run: |
           cd release-artifacts
