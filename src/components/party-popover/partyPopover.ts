@@ -207,7 +207,7 @@ function handleJoinPartySubmit(): void {
 	const input = document.getElementById('party-pin-input') as HTMLInputElement;
 	if (!input) return;
 
-	const pin = input.value.trim().toUpperCase();
+	const pin = input.value.trim().toLowerCase(); // Convert to lowercase for UUID format
 	if (!pin) {
 		showJoinError('Please enter a party PIN');
 		return;
