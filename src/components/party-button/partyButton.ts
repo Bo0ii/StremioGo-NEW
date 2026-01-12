@@ -1,6 +1,7 @@
 import Helpers from '../../utils/Helpers';
 import logger from '../../utils/logger';
 import { openPartyPopover, initPartyPopover } from '../party-popover/partyPopover';
+import { SELECTORS } from '../../constants';
 
 // Types
 interface ContentInfo {
@@ -12,7 +13,7 @@ interface ContentInfo {
 }
 
 // Selector for the row containing circular action buttons (share, heart, etc.)
-const ACTION_BUTTONS_ROW_SELECTOR = '[class*="action-buttons-container"]';
+const ACTION_BUTTONS_ROW_SELECTOR = SELECTORS.ACTION_BUTTONS_CONTAINER;
 // More specific selector for the share button to find the right container
 const SHARE_BUTTON_SELECTOR = '[class*="share-button-container"], [class*="share-button"]';
 
@@ -77,7 +78,7 @@ function isOnDetailPage(): boolean {
  */
 function createPartyButton(referenceButton?: Element | null): HTMLElement {
 	const button = document.createElement('div');
-	button.id = 'peario-watch-button';
+	button.id = 'party-watch-button';
 	button.setAttribute('tabindex', '0');
 	button.setAttribute('title', 'Watch with Friends');
 
@@ -97,12 +98,10 @@ function createPartyButton(referenceButton?: Element | null): HTMLElement {
 	`;
 
 	logger.info('[Party] Creating button with click handler');
-	console.log('[Party] Creating button with click handler');
 
 	// Click handler - open native party panel
 	button.addEventListener('click', (e) => {
 		logger.info('[Party] Click event fired!');
-		console.log('[Party] Click event fired!');
 		e.preventDefault();
 		e.stopPropagation();
 		handlePartyButtonClick();
@@ -124,33 +123,24 @@ function createPartyButton(referenceButton?: Element | null): HTMLElement {
  */
 function handlePartyButtonClick(): void {
 	logger.info('[Party] Button clicked!');
-	console.log('[Party] Button clicked!');
 
 	const contentInfo = parseDetailUrl(location.hash);
-	logger.info(`[Party] Content info parsed:`, contentInfo);
-	console.log('[Party] Content info:', contentInfo);
+	logger.info('[Party] Content info parsed:', contentInfo);
 
 	try {
 		if (contentInfo) {
-			logger.info(`[Party] Calling openPartyPopover with content: ${contentInfo.type} - ${contentInfo.name}`);
-			console.log('[Party] Calling openPartyPopover with content:', contentInfo);
+			logger.info(`[Party] Opening popover with content: ${contentInfo.type} - ${contentInfo.name}`);
 			openPartyPopover({
 				id: contentInfo.imdbId,
 				type: contentInfo.type,
 				name: contentInfo.name
 			});
-			logger.info(`[Party] openPartyPopover called successfully`);
-			console.log('[Party] openPartyPopover called successfully');
 		} else {
-			logger.info('[Party] Calling openPartyPopover without content info');
-			console.log('[Party] Calling openPartyPopover without content info');
+			logger.info('[Party] Opening popover without content info');
 			openPartyPopover();
-			logger.info('[Party] openPartyPopover called successfully (no content)');
-			console.log('[Party] openPartyPopover called successfully (no content)');
 		}
 	} catch (error) {
 		logger.error('[Party] Error opening popover:', error);
-		console.error('[Party] Error opening popover:', error);
 	}
 }
 
@@ -158,7 +148,7 @@ function handlePartyButtonClick(): void {
  * Remove the Party button from DOM
  */
 function removePartyButton(): void {
-	const button = document.getElementById('peario-watch-button');
+	const button = document.getElementById('party-watch-button');
 	if (button) {
 		button.remove();
 	}
@@ -167,7 +157,7 @@ function removePartyButton(): void {
 /**
  * Inject the Party button into the detail page
  */
-export function injectPearioButton(): void {
+export function injectPartyButton(): void {
 	// Only inject on detail pages
 	if (!isOnDetailPage()) {
 		removePartyButton();
@@ -175,7 +165,7 @@ export function injectPearioButton(): void {
 	}
 
 	// Already injected check
-	if (document.getElementById('peario-watch-button')) {
+	if (document.getElementById('party-watch-button')) {
 		return;
 	}
 
@@ -189,7 +179,7 @@ export function injectPearioButton(): void {
 	// Wait for action buttons container
 	Helpers.waitForElm(ACTION_BUTTONS_ROW_SELECTOR).then((container) => {
 		// Race condition check
-		if (document.getElementById('peario-watch-button')) {
+		if (document.getElementById('party-watch-button')) {
 			return;
 		}
 
@@ -229,26 +219,26 @@ export function injectPearioButton(): void {
 	}).catch(err => {
 		logger.warn(`[Party] Could not inject button: ${err}`);
 		// Retry after delay
-		setTimeout(() => injectPearioButton(), 300);
+		setTimeout(() => injectPartyButton(), 300);
 	});
 }
 
 /**
  * Reset button injection attempts counter
  */
-export function resetPearioButtonInjection(): void {
+export function resetPartyButtonInjection(): void {
 	buttonInjectionAttempts = 0;
 }
 
 /**
- * Handle route changes
+ * Handle route changes for party button
  */
-export function handlePearioRoute(): void {
+export function handlePartyRoute(): void {
 	// Re-inject button on detail pages
 	if (isOnDetailPage()) {
 		removePartyButton();
 		buttonInjectionAttempts = 0;
-		injectPearioButton();
+		injectPartyButton();
 	} else {
 		removePartyButton();
 	}
@@ -260,25 +250,9 @@ export function handlePearioRoute(): void {
 export function initPartySystem(): void {
 	try {
 		logger.info('[Party] Initializing party system...');
-		console.log('[Party] Initializing party system...');
 		initPartyPopover();
 		logger.info('[Party] System initialized successfully');
-		console.log('[Party] System initialized successfully');
 	} catch (error) {
 		logger.error('[Party] Failed to initialize party system:', error);
-		console.error('[Party] Failed to initialize party system:', error);
 	}
-}
-
-// Legacy exports for compatibility (no longer needed)
-export function getPearioOverlayTemplate(): string {
-	return '';
-}
-
-export function openPearioOverlay(): void {
-	handlePartyButtonClick();
-}
-
-export function closePearioOverlay(): void {
-	// No-op - popover handles its own close
 }

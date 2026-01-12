@@ -155,7 +155,7 @@ async function createWindow() {
             webSecurity: false,
             nodeIntegration: true,
             contextIsolation: false,
-            // Enable webview tag for Peario overlay
+            // Enable webview tag for embedded content
             webviewTag: true,
             // Additional security hardening
             allowRunningInsecureContent: false,

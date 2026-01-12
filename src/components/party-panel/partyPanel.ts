@@ -1,13 +1,35 @@
 import TemplateCache from '../../utils/templateCache';
-import partyService, { PartyUser, PartyRoom, PartyMessage } from '../../utils/PartyService';
-import Helpers from '../../utils/Helpers';
+import partyService, { WatchPartyRoom, WatchPartyMember, WatchPartyMessage } from '../../utils/PartyService';
 import logger from '../../utils/logger';
 
 // State
 let panelElement: HTMLElement | null = null;
 let isOpen = false;
-let videoSyncHandler: (() => void) | null = null;
-let currentContentInfo: { id: string; type: string; name: string } | null = null;
+
+// View elements
+let initialView: HTMLElement | null = null;
+let roomView: HTMLElement | null = null;
+let loadingView: HTMLElement | null = null;
+
+// Crown SVG for host badge
+const CROWN_SVG = `<svg class="party-host-crown" viewBox="0,0,256,256"><g fill="#9370db"><g transform="scale(10.66667,10.66667)"><path d="M12,3c-0.55228,0 -1,0.44772 -1,1c-0.00042,0.32306 0.15527,0.62642 0.41797,0.81445l-3.07227,4.30078l-5.39844,-1.79883c0.03449,-0.10194 0.0523,-0.20879 0.05273,-0.31641c0,-0.55228 -0.44772,-1 -1,-1c-0.55228,0 -1,0.44772 -1,1c0,0.55228 0.44772,1 1,1c0.07298,-0.00053 0.14567,-0.00904 0.2168,-0.02539l1.7832,8.02539v4h16v-4l1.7832,-8.02344c0.0712,0.01569 0.14389,0.02355 0.2168,0.02344c0.55228,0 1,-0.44772 1,-1c0,-0.55228 -0.44772,-1 -1,-1c-0.55228,0 -1,0.44772 -1,1c0.00044,0.10762 0.01824,0.21446 0.05273,0.31641l-5.39844,1.79883l-3.07422,-4.30273c0.26288,-0.18721 0.41926,-0.48977 0.41992,-0.8125c0,-0.55228 -0.44772,-1 -1,-1zM12,7.44141l2.02539,2.83594l0.85938,1.20313l1.40039,-0.4668l2.99609,-0.99805l-0.88477,3.98438h-12.79297l-0.88477,-3.98633l2.99414,0.99805l1.40039,0.4668l0.85938,-1.20117zM6,16h12v2h-12z"></path></g></g></svg>`;
+
+// Toggle host button SVG
+const TOGGLE_HOST_SVG = `<svg viewBox="0,0,256,256" fill="currentColor"><g transform="scale(10.66667,10.66667)"><path d="M12,3c-0.55228,0 -1,0.44772 -1,1c-0.00042,0.32306 0.15527,0.62642 0.41797,0.81445l-3.07227,4.30078l-5.39844,-1.79883c0.03449,-0.10194 0.0523,-0.20879 0.05273,-0.31641c0,-0.55228 -0.44772,-1 -1,-1c-0.55228,0 -1,0.44772 -1,1c0,0.55228 0.44772,1 1,1c0.07298,-0.00053 0.14567,-0.00904 0.2168,-0.02539l1.7832,8.02539v4h16v-4l1.7832,-8.02344c0.0712,0.01569 0.14389,0.02355 0.2168,0.02344c0.55228,0 1,-0.44772 1,-1c0,-0.55228 -0.44772,-1 -1,-1c-0.55228,0 -1,0.44772 -1,1c0.00044,0.10762 0.01824,0.21446 0.05273,0.31641l-5.39844,1.79883l-3.07422,-4.30273c0.26288,-0.18721 0.41926,-0.48977 0.41992,-0.8125c0,-0.55228 -0.44772,-1 -1,-1zM12,7.44141l2.02539,2.83594l0.85938,1.20313l1.40039,-0.4668l2.99609,-0.99805l-0.88477,3.98438h-12.79297l-0.88477,-3.98633l2.99414,0.99805l1.40039,0.4668l0.85938,-1.20117zM6,16h12v2h-12z"></path></g></svg>`;
+
+// Avatar colors
+const AVATAR_COLORS = ['#7b5bf5', '#a855f7', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6'];
+
+/**
+ * Get color for user based on userId
+ */
+function getColorForUser(userId: string): string {
+	let hash = 0;
+	for (let i = 0; i < userId.length; i++) {
+		hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+	}
+	return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
 
 /**
  * Get the party panel template
@@ -17,53 +39,491 @@ function getTemplate(): string {
 }
 
 /**
+ * Show specific view
+ */
+function showView(viewName: 'initial' | 'room' | 'loading'): void {
+	if (!initialView || !roomView || !loadingView) return;
+
+	// Hide all views
+	initialView.classList.add('party-view-hidden');
+	roomView.classList.add('party-view-hidden');
+	loadingView.classList.add('party-view-hidden');
+
+	// Show selected view
+	switch (viewName) {
+		case 'initial':
+			initialView.classList.remove('party-view-hidden');
+			break;
+		case 'room':
+			roomView.classList.remove('party-view-hidden');
+			break;
+		case 'loading':
+			loadingView.classList.remove('party-view-hidden');
+			break;
+	}
+}
+
+/**
+ * Update loading text
+ */
+function setLoadingText(text: string): void {
+	const loadingText = document.getElementById('party-panel-loading-text');
+	if (loadingText) {
+		loadingText.textContent = text;
+	}
+}
+
+/**
+ * Show error in join view
+ */
+function showJoinError(message: string): void {
+	const errorEl = document.getElementById('party-panel-join-error');
+	if (errorEl) {
+		errorEl.textContent = message;
+		errorEl.style.display = 'block';
+	}
+}
+
+/**
+ * Hide join error
+ */
+function hideJoinError(): void {
+	const errorEl = document.getElementById('party-panel-join-error');
+	if (errorEl) {
+		errorEl.style.display = 'none';
+	}
+}
+
+/**
+ * Switch between Create and Join tabs
+ */
+function switchTab(tab: 'create' | 'join'): void {
+	const createTab = document.getElementById('party-panel-create-tab');
+	const joinTab = document.getElementById('party-panel-join-tab');
+	const createForm = document.getElementById('party-panel-create-form');
+	const joinForm = document.getElementById('party-panel-join-form');
+
+	if (tab === 'create') {
+		createTab?.classList.add('party-tab-active');
+		joinTab?.classList.remove('party-tab-active');
+		createForm?.classList.remove('party-form-hidden');
+		joinForm?.classList.add('party-form-hidden');
+	} else {
+		createTab?.classList.remove('party-tab-active');
+		joinTab?.classList.add('party-tab-active');
+		createForm?.classList.add('party-form-hidden');
+		joinForm?.classList.remove('party-form-hidden');
+	}
+
+	hideJoinError();
+}
+
+/**
+ * Update participant count badge
+ */
+function updateParticipantCount(count: number): void {
+	const badge = document.getElementById('party-panel-count');
+	if (badge) {
+		badge.textContent = count.toString();
+		badge.style.display = count > 0 ? 'inline-flex' : 'none';
+	}
+}
+
+/**
+ * Update room display
+ */
+function updateRoomDisplay(room: WatchPartyRoom): void {
+	// Update room name
+	const roomName = document.getElementById('party-panel-room-name');
+	if (roomName) {
+		roomName.textContent = room.name;
+	}
+
+	// Update party code
+	const pinCode = document.getElementById('party-panel-pin-code');
+	if (pinCode) {
+		pinCode.textContent = room.code;
+	}
+
+	// Render participants
+	renderParticipants(room.members);
+}
+
+/**
+ * Render participants list
+ */
+function renderParticipants(members: WatchPartyMember[]): void {
+	const listEl = document.getElementById('party-panel-participants-list');
+	if (!listEl) return;
+
+	const currentUserIsHost = partyService.isHost;
+	const hostCount = members.filter(m => m.isHost).length;
+
+	listEl.innerHTML = members.map(member => {
+		const initial = member.userName.charAt(0).toUpperCase();
+		const color = getColorForUser(member.userId);
+		const canToggle = currentUserIsHost && (hostCount > 1 || !member.isHost);
+
+		return `
+			<div class="party-participant">
+				<div class="party-participant-avatar" style="background-color: ${color};">
+					${escapeHtml(initial)}
+				</div>
+				<span class="party-participant-name">${escapeHtml(member.userName)}</span>
+				${member.isHost ? `<span class="party-participant-host">${CROWN_SVG}</span>` : ''}
+				${canToggle ? `<button class="party-toggle-host-btn" data-userid="${member.userId}" title="Toggle host">${TOGGLE_HOST_SVG}</button>` : ''}
+			</div>
+		`;
+	}).join('');
+
+	// Add click handlers for toggle buttons
+	listEl.querySelectorAll('.party-toggle-host-btn').forEach(btn => {
+		btn.addEventListener('click', (e) => {
+			const userId = (e.currentTarget as HTMLElement).dataset.userid;
+			if (userId) {
+				partyService.toggleHost(userId);
+			}
+		});
+	});
+
+	// Update participant count
+	updateParticipantCount(members.length);
+}
+
+/**
+ * Render chat messages
+ */
+function renderMessages(): void {
+	const messagesEl = document.getElementById('party-panel-messages');
+	if (!messagesEl) return;
+
+	messagesEl.innerHTML = '';
+
+	partyService.messages.forEach(msg => {
+		addMessageToUI(msg);
+	});
+
+	// Scroll to bottom
+	messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+/**
+ * Add single message to UI
+ */
+function addMessageToUI(msg: WatchPartyMessage): void {
+	const messagesEl = document.getElementById('party-panel-messages');
+	if (!messagesEl) return;
+
+	const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+	const color = getColorForUser(msg.senderId);
+
+	const messageEl = document.createElement('div');
+
+	if (msg.senderId === 'system') {
+		messageEl.className = 'party-message party-message-system';
+		messageEl.innerHTML = `<span>${escapeHtml(msg.text)}</span>`;
+	} else {
+		messageEl.className = 'party-message';
+		messageEl.innerHTML = `
+			<div class="party-message-header">
+				${msg.isHost ? `<svg class="party-message-host" viewBox="0,0,256,256"><g fill="#9370db"><g transform="scale(10.66667,10.66667)"><path d="M12,3c-0.55228,0 -1,0.44772 -1,1c-0.00042,0.32306 0.15527,0.62642 0.41797,0.81445l-3.07227,4.30078l-5.39844,-1.79883c0.03449,-0.10194 0.0523,-0.20879 0.05273,-0.31641c0,-0.55228 -0.44772,-1 -1,-1c-0.55228,0 -1,0.44772 -1,1c0,0.55228 0.44772,1 1,1c0.07298,-0.00053 0.14567,-0.00904 0.2168,-0.02539l1.7832,8.02539v4h16v-4l1.7832,-8.02344c0.0712,0.01569 0.14389,0.02355 0.2168,0.02344c0.55228,0 1,-0.44772 1,-1c0,-0.55228 -0.44772,-1 -1,-1c-0.55228,0 -1,0.44772 -1,1c0.00044,0.10762 0.01824,0.21446 0.05273,0.31641l-5.39844,1.79883l-3.07422,-4.30273c0.26288,-0.18721 0.41926,-0.48977 0.41992,-0.8125c0,-0.55228 -0.44772,-1 -1,-1zM12,7.44141l2.02539,2.83594l0.85938,1.20313l1.40039,-0.4668l2.99609,-0.99805l-0.88477,3.98438h-12.79297l-0.88477,-3.98633l2.99414,0.99805l1.40039,0.4668l0.85938,-1.20117zM6,16h12v2h-12z"></path></g></g></svg>` : ''}
+				<span class="party-message-user" style="color: ${color};">
+					${escapeHtml(msg.senderName)}
+				</span>
+				<span class="party-message-time">${time}</span>
+			</div>
+			<div class="party-message-text">${escapeHtml(msg.text)}</div>
+		`;
+	}
+
+	messagesEl.appendChild(messageEl);
+	messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+/**
+ * Handle create party
+ */
+function handleCreateParty(): void {
+	const usernameInput = document.getElementById('party-panel-create-username') as HTMLInputElement;
+	const partynameInput = document.getElementById('party-panel-create-partyname') as HTMLInputElement;
+	const passwordInput = document.getElementById('party-panel-create-password') as HTMLInputElement;
+	const joinAsHostInput = document.getElementById('party-panel-create-joinashost') as HTMLInputElement;
+
+	const username = usernameInput?.value.trim();
+	const partyName = partynameInput?.value.trim() || 'Watch Party';
+	const password = passwordInput?.value || '';
+	const joinAsHost = joinAsHostInput?.checked || false;
+
+	if (!username) {
+		usernameInput?.focus();
+		return;
+	}
+
+	logger.info('[PartyPanel] Creating party:', { username, partyName, joinAsHost });
+
+	showView('loading');
+	setLoadingText('Creating party...');
+
+	partyService.createParty(username, partyName, password, joinAsHost);
+}
+
+/**
+ * Handle join party
+ */
+function handleJoinParty(): void {
+	const usernameInput = document.getElementById('party-panel-join-username') as HTMLInputElement;
+	const codeInput = document.getElementById('party-panel-join-code') as HTMLInputElement;
+	const passwordInput = document.getElementById('party-panel-join-password') as HTMLInputElement;
+
+	const username = usernameInput?.value.trim();
+	const partyCode = codeInput?.value.trim().toUpperCase();
+	const password = passwordInput?.value || '';
+
+	if (!username) {
+		usernameInput?.focus();
+		return;
+	}
+
+	if (!partyCode || partyCode.length < 5) {
+		showJoinError('Please enter a valid party code');
+		codeInput?.focus();
+		return;
+	}
+
+	hideJoinError();
+
+	logger.info('[PartyPanel] Joining party:', partyCode);
+
+	showView('loading');
+	setLoadingText('Joining party...');
+
+	partyService.joinParty(username, partyCode, password);
+}
+
+/**
+ * Handle copy PIN button click
+ */
+function handleCopyPin(): void {
+	if (!partyService.room) return;
+
+	const pin = partyService.room.code;
+
+	navigator.clipboard.writeText(pin).then(() => {
+		logger.info('[PartyPanel] PIN copied to clipboard');
+
+		const copyBtn = document.getElementById('party-panel-copy-btn');
+		if (copyBtn) {
+			const originalHTML = copyBtn.innerHTML;
+			copyBtn.innerHTML = `
+				<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+					<path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/>
+				</svg>
+			`;
+			setTimeout(() => {
+				copyBtn.innerHTML = originalHTML;
+			}, 2000);
+		}
+	}).catch(err => {
+		logger.error('[PartyPanel] Failed to copy PIN:', err);
+	});
+}
+
+/**
+ * Handle leave party button click
+ */
+function handleLeaveParty(): void {
+	logger.info('[PartyPanel] Leaving party...');
+
+	partyService.leaveParty();
+
+	showView('initial');
+	updateParticipantCount(0);
+}
+
+/**
+ * Handle send chat message
+ */
+function handleSendMessage(): void {
+	const input = document.getElementById('party-panel-message-input') as HTMLInputElement;
+	if (!input) return;
+
+	const text = input.value.trim();
+	if (!text) return;
+
+	partyService.sendChatMessage(text);
+	input.value = '';
+}
+
+/**
+ * Populate form with stored values
+ */
+function populateFormValues(): void {
+	const storedUsername = partyService.getStoredUsername();
+	const storedPartyName = partyService.getStoredPartyName();
+	const storedJoinAsHost = partyService.getStoredJoinAsHost();
+
+	// Create form
+	const createUsername = document.getElementById('party-panel-create-username') as HTMLInputElement;
+	const createPartyname = document.getElementById('party-panel-create-partyname') as HTMLInputElement;
+	const createJoinAsHost = document.getElementById('party-panel-create-joinashost') as HTMLInputElement;
+
+	if (createUsername) createUsername.value = storedUsername;
+	if (createPartyname) createPartyname.value = storedPartyName;
+	if (createJoinAsHost) createJoinAsHost.checked = storedJoinAsHost;
+
+	// Join form
+	const joinUsername = document.getElementById('party-panel-join-username') as HTMLInputElement;
+	if (joinUsername) joinUsername.value = storedUsername;
+}
+
+/**
+ * Setup event handlers
+ */
+function setupEventHandlers(): void {
+	// Close button
+	document.getElementById('party-close-btn')?.addEventListener('click', closePartyPanel);
+
+	// Escape key to close
+	document.addEventListener('keydown', handleEscape);
+
+	// Tab switching
+	document.getElementById('party-panel-create-tab')?.addEventListener('click', () => switchTab('create'));
+	document.getElementById('party-panel-join-tab')?.addEventListener('click', () => switchTab('join'));
+
+	// Create form submit
+	document.getElementById('party-panel-create-submit')?.addEventListener('click', handleCreateParty);
+
+	// Join form submit
+	document.getElementById('party-panel-join-submit')?.addEventListener('click', handleJoinParty);
+
+	// Join code input - Enter key and uppercase transform
+	const joinCodeInput = document.getElementById('party-panel-join-code') as HTMLInputElement;
+	joinCodeInput?.addEventListener('keydown', (e) => {
+		if (e.key === 'Enter') {
+			handleJoinParty();
+		}
+	});
+	joinCodeInput?.addEventListener('input', () => {
+		joinCodeInput.value = joinCodeInput.value.toUpperCase();
+	});
+
+	// Room view buttons
+	document.getElementById('party-panel-copy-btn')?.addEventListener('click', handleCopyPin);
+	document.getElementById('party-panel-leave-btn')?.addEventListener('click', handleLeaveParty);
+
+	// Auto-sync toggle
+	document.getElementById('party-panel-auto-sync')?.addEventListener('change', (e) => {
+		const checked = (e.target as HTMLInputElement).checked;
+		partyService.setAutoSync(checked);
+	});
+
+	// Chat send button
+	document.getElementById('party-panel-send-btn')?.addEventListener('click', handleSendMessage);
+
+	// Chat input - Enter key
+	document.getElementById('party-panel-message-input')?.addEventListener('keydown', (e) => {
+		if (e.key === 'Enter') {
+			handleSendMessage();
+		}
+	});
+}
+
+/**
+ * Setup PartyService event listeners
+ */
+function setupPartyServiceListeners(): void {
+	// Connected event
+	partyService.on('connected', () => {
+		logger.info('[PartyPanel] Connected to server');
+	});
+
+	// Room event (joined/created)
+	partyService.on('room', (room: WatchPartyRoom) => {
+		logger.info('[PartyPanel] Room event:', room);
+
+		showView('room');
+		updateRoomDisplay(room);
+		renderMessages();
+	});
+
+	// Message event
+	partyService.on('message', (message: WatchPartyMessage) => {
+		logger.info('[PartyPanel] New message');
+
+		addMessageToUI(message);
+	});
+
+	// Error event
+	partyService.on('error', (error: { message: string }) => {
+		logger.error('[PartyPanel] Error:', error);
+
+		// Show error in join view if we were joining
+		if (loadingView && !loadingView.classList.contains('party-view-hidden')) {
+			showJoinError(error.message || 'Connection failed');
+			showView('initial');
+			switchTab('join');
+		} else {
+			showView('initial');
+		}
+	});
+
+	// Disconnected event
+	partyService.on('disconnected', () => {
+		logger.info('[PartyPanel] Disconnected');
+
+		if (isOpen) {
+			showView('initial');
+			updateParticipantCount(0);
+		}
+	});
+}
+
+/**
+ * Handle escape key
+ */
+function handleEscape(e: KeyboardEvent): void {
+	if (e.key === 'Escape' && isOpen) {
+		closePartyPanel();
+	}
+}
+
+/**
  * Open the party panel
  */
 export function openPartyPanel(contentInfo?: { id: string; type: string; name: string }): void {
 	logger.info('[PartyPanel] openPartyPanel called');
-	console.log('[PartyPanel] openPartyPanel called, contentInfo:', contentInfo);
-	console.log('[PartyPanel] isOpen:', isOpen);
 
 	if (isOpen) {
 		logger.info('[PartyPanel] Panel already open, closing...');
-		console.log('[PartyPanel] Panel already open, closing...');
 		closePartyPanel();
 		return;
 	}
 
-	// Store content info for room creation
+	// Content info can be used for room creation if needed
 	if (contentInfo) {
-		currentContentInfo = contentInfo;
-		logger.info('[PartyPanel] Content info stored:', contentInfo);
-		console.log('[PartyPanel] Content info stored:', contentInfo);
+		logger.info('[PartyPanel] Opening with content info:', contentInfo);
 	}
 
 	// Remove existing panel
 	const existingPanel = document.getElementById('party-panel');
 	if (existingPanel) {
 		logger.info('[PartyPanel] Removing existing panel');
-		console.log('[PartyPanel] Removing existing panel');
 		existingPanel.remove();
 	}
 
 	// Get template
 	logger.info('[PartyPanel] Getting template...');
-	console.log('[PartyPanel] Getting template...');
 	let template: string;
 	try {
 		template = getTemplate();
 		logger.info('[PartyPanel] Template loaded, length:', template.length);
-		console.log('[PartyPanel] Template loaded, length:', template.length);
-		console.log('[PartyPanel] Template preview:', template.substring(0, 200));
 	} catch (error) {
 		logger.error('[PartyPanel] Failed to load template:', error);
-		console.error('[PartyPanel] Failed to load template:', error);
 		return;
 	}
 
 	// Create panel
 	logger.info('[PartyPanel] Creating panel element...');
-	console.log('[PartyPanel] Creating panel element...');
 	const container = document.createElement('div');
 	container.innerHTML = template;
 
@@ -74,13 +534,11 @@ export function openPartyPanel(contentInfo?: { id: string; type: string; name: s
 		headStyle.id = 'party-panel-styles';
 		headStyle.textContent = styleEl.textContent || '';
 		document.head.appendChild(headStyle);
-		console.log('[PartyPanel] Styles injected into head');
 	}
 
 	const panelEl = container.firstElementChild as HTMLElement;
 	if (!panelEl) {
 		logger.error('[PartyPanel] Failed to create panel element from template');
-		console.error('[PartyPanel] Failed to create panel element from template');
 		return;
 	}
 
@@ -91,7 +549,7 @@ export function openPartyPanel(contentInfo?: { id: string; type: string; name: s
 		right: 20px !important;
 		width: 320px !important;
 		max-height: calc(100vh - 100px) !important;
-		background: rgba(20, 20, 24, 0.98) !important;
+		background: rgba(18, 18, 20, 0.98) !important;
 		border: 1px solid rgba(255, 255, 255, 0.15) !important;
 		border-radius: 12px !important;
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
@@ -106,43 +564,39 @@ export function openPartyPanel(contentInfo?: { id: string; type: string; name: s
 	`;
 
 	logger.info('[PartyPanel] Appending panel to body...');
-	console.log('[PartyPanel] Appending panel to body...');
 	document.body.appendChild(panelEl);
 
 	panelElement = document.getElementById('party-panel');
 	logger.info('[PartyPanel] Panel element in DOM:', !!panelElement);
-	console.log('[PartyPanel] Panel element in DOM:', panelElement);
-	console.log('[PartyPanel] Panel computed style z-index:', panelElement ? window.getComputedStyle(panelElement).zIndex : 'N/A');
 
 	isOpen = true;
 
+	// Get view elements
+	initialView = document.getElementById('party-panel-initial');
+	roomView = document.getElementById('party-panel-room');
+	loadingView = document.getElementById('party-panel-loading');
+
 	// Setup event handlers
 	logger.info('[PartyPanel] Setting up event handlers...');
-	console.log('[PartyPanel] Setting up event handlers...');
 	setupEventHandlers();
-
-	// Connect to party server
-	logger.info('[PartyPanel] Checking party service connection...');
-	console.log('[PartyPanel] partyService.connected:', partyService.connected);
-	console.log('[PartyPanel] partyService.ready:', partyService.ready);
-
-	if (!partyService.connected) {
-		logger.info('[PartyPanel] Connecting to party server...');
-		console.log('[PartyPanel] Connecting to party server...');
-		partyService.connect();
-	} else if (partyService.ready) {
-		logger.info('[PartyPanel] Already connected, showing lobby...');
-		console.log('[PartyPanel] Already connected, showing lobby...');
-		showLobby();
-	}
 
 	// Setup party service listeners
 	logger.info('[PartyPanel] Setting up party listeners...');
-	console.log('[PartyPanel] Setting up party listeners...');
-	setupPartyListeners();
+	setupPartyServiceListeners();
+
+	// Populate form with stored values
+	populateFormValues();
+
+	// Show appropriate view based on connection state
+	if (partyService.connected && partyService.room) {
+		showView('room');
+		updateRoomDisplay(partyService.room);
+		renderMessages();
+	} else {
+		showView('initial');
+	}
 
 	logger.info('[PartyPanel] Panel opened successfully!');
-	console.log('[PartyPanel] Panel opened successfully!');
 }
 
 /**
@@ -151,14 +605,19 @@ export function openPartyPanel(contentInfo?: { id: string; type: string; name: s
 export function closePartyPanel(): void {
 	if (!isOpen) return;
 
+	logger.info('[PartyPanel] Closing panel');
+
 	panelElement?.remove();
 	panelElement = null;
+	initialView = null;
+	roomView = null;
+	loadingView = null;
 	isOpen = false;
 
-	// Stop video sync if active
-	stopVideoSync();
+	// Cleanup event listeners
+	document.removeEventListener('keydown', handleEscape);
 
-	logger.info('[PartyPanel] Panel closed');
+	logger.info('[PartyPanel] Panel closed (party still active)');
 }
 
 /**
@@ -166,390 +625,6 @@ export function closePartyPanel(): void {
  */
 export function isPanelOpen(): boolean {
 	return isOpen;
-}
-
-/**
- * Setup event handlers for panel UI
- */
-function setupEventHandlers(): void {
-	// Close button
-	document.getElementById('party-close-btn')?.addEventListener('click', closePartyPanel);
-
-	// Create party button
-	document.getElementById('party-create-btn')?.addEventListener('click', createParty);
-
-	// Join party button
-	document.getElementById('party-join-btn')?.addEventListener('click', joinParty);
-
-	// Join input - enter key
-	document.getElementById('party-join-input')?.addEventListener('keydown', (e) => {
-		if (e.key === 'Enter') joinParty();
-	});
-
-	// Copy code button
-	document.getElementById('party-copy-btn')?.addEventListener('click', copyRoomCode);
-
-	// Leave party button
-	document.getElementById('party-leave-btn')?.addEventListener('click', leaveParty);
-
-	// Auto-sync toggle
-	document.getElementById('party-auto-sync')?.addEventListener('change', (e) => {
-		const checked = (e.target as HTMLInputElement).checked;
-		partyService.setAutoSync(checked);
-	});
-
-	// Send message button
-	document.getElementById('party-send-btn')?.addEventListener('click', sendMessage);
-
-	// Message input - enter key
-	document.getElementById('party-message-input')?.addEventListener('keydown', (e) => {
-		if (e.key === 'Enter') sendMessage();
-	});
-
-	// Close on escape
-	document.addEventListener('keydown', handleEscape);
-}
-
-/**
- * Handle escape key
- */
-function handleEscape(e: KeyboardEvent): void {
-	if (e.key === 'Escape' && isOpen) {
-		closePartyPanel();
-	}
-}
-
-/**
- * Setup party service event listeners
- */
-function setupPartyListeners(): void {
-	// Ready event
-	partyService.on('ready', () => {
-		showLobby();
-	});
-
-	// Room joined/created
-	partyService.on('room', (room: PartyRoom) => {
-		showRoom(room);
-	});
-
-	// Room sync
-	partyService.on('sync', (room: PartyRoom) => {
-		updateRoom(room);
-		applyVideoSync(room);
-	});
-
-	// Chat message
-	partyService.on('message', (message: PartyMessage) => {
-		addMessage(message);
-	});
-
-	// Error
-	partyService.on('error', (error: { message: string }) => {
-		showError(error.message);
-	});
-
-	// Disconnected
-	partyService.on('disconnected', () => {
-		showStatus('Disconnected. Reconnecting...', true);
-	});
-}
-
-/**
- * Show lobby view (create/join options)
- */
-function showLobby(): void {
-	const status = document.getElementById('party-status');
-	const actions = document.getElementById('party-actions');
-	const lobby = document.getElementById('party-lobby');
-	const room = document.getElementById('party-room');
-
-	if (status) status.style.display = 'none';
-	if (actions) actions.style.display = 'flex';
-	if (lobby) lobby.style.display = 'flex';
-	if (room) room.style.display = 'none';
-}
-
-/**
- * Show room view
- */
-function showRoom(roomData: PartyRoom): void {
-	const lobby = document.getElementById('party-lobby');
-	const room = document.getElementById('party-room');
-
-	if (lobby) lobby.style.display = 'none';
-	if (room) room.style.display = 'flex';
-
-	// Update room code
-	const roomId = document.getElementById('party-room-id');
-	if (roomId) roomId.textContent = roomData.id;
-
-	// Update users list
-	updateUsersList(roomData.users, roomData.owner);
-
-	// Start video sync
-	startVideoSync();
-}
-
-/**
- * Update room display
- */
-function updateRoom(roomData: PartyRoom): void {
-	// Update users list
-	updateUsersList(roomData.users, roomData.owner);
-}
-
-/**
- * Update users list
- */
-function updateUsersList(users: PartyUser[], ownerId: string): void {
-	const list = document.getElementById('party-users-list');
-	if (!list) return;
-
-	list.innerHTML = users.map(user => `
-		<div class="party-user">
-			<div class="party-user-avatar" style="background: ${user.color}">
-				${user.name.charAt(0).toUpperCase()}
-			</div>
-			<span class="party-user-name">${escapeHtml(user.name)}</span>
-			${user.id === ownerId ? '<span class="party-user-owner">Host</span>' : ''}
-		</div>
-	`).join('');
-}
-
-/**
- * Add chat message
- */
-function addMessage(message: PartyMessage): void {
-	const messages = document.getElementById('party-messages');
-	if (!messages) return;
-
-	const time = new Date(message.timestamp).toLocaleTimeString([], {
-		hour: '2-digit',
-		minute: '2-digit'
-	});
-
-	const messageEl = document.createElement('div');
-	messageEl.className = 'party-message';
-	messageEl.innerHTML = `
-		<div class="party-message-header">
-			<span class="party-message-user" style="color: ${message.user.color}">
-				${escapeHtml(message.user.name)}
-			</span>
-			<span class="party-message-time">${time}</span>
-		</div>
-		<div class="party-message-text">${escapeHtml(message.text)}</div>
-	`;
-
-	messages.appendChild(messageEl);
-	messages.scrollTop = messages.scrollHeight;
-}
-
-/**
- * Show status message
- */
-function showStatus(text: string, showSpinner = false): void {
-	const status = document.getElementById('party-status');
-	if (!status) return;
-
-	status.innerHTML = `
-		${showSpinner ? '<div class="party-loading-spinner"></div>' : ''}
-		<span>${escapeHtml(text)}</span>
-	`;
-	status.style.display = 'flex';
-}
-
-/**
- * Show error message
- */
-function showError(message: string): void {
-	showStatus(message, false);
-	const status = document.getElementById('party-status');
-	if (status) {
-		status.style.color = '#e94848';
-	}
-}
-
-/**
- * Create a new party
- */
-function createParty(): void {
-	if (!partyService.ready) {
-		showError('Not connected to server');
-		return;
-	}
-
-	// Get content info from current page or stored
-	const meta = currentContentInfo || getContentFromPage();
-
-	if (!meta) {
-		showError('Please open a movie or series first');
-		return;
-	}
-
-	showStatus('Creating party...', true);
-	partyService.createRoom(meta);
-}
-
-/**
- * Join an existing party
- */
-function joinParty(): void {
-	if (!partyService.ready) {
-		showError('Not connected to server');
-		return;
-	}
-
-	const input = document.getElementById('party-join-input') as HTMLInputElement;
-	const roomId = input?.value.trim();
-
-	if (!roomId) {
-		showError('Please enter a room code');
-		return;
-	}
-
-	showStatus('Joining party...', true);
-	partyService.joinRoom(roomId);
-}
-
-/**
- * Leave the current party
- */
-function leaveParty(): void {
-	partyService.leaveRoom();
-	stopVideoSync();
-	showLobby();
-}
-
-/**
- * Copy room code to clipboard
- */
-async function copyRoomCode(): Promise<void> {
-	const room = partyService.room;
-	if (!room) return;
-
-	try {
-		await navigator.clipboard.writeText(room.id);
-
-		// Show feedback
-		const btn = document.getElementById('party-copy-btn');
-		if (btn) {
-			btn.innerHTML = `
-				<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-					<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-				</svg>
-			`;
-			setTimeout(() => {
-				btn.innerHTML = `
-					<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-						<path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
-					</svg>
-				`;
-			}, 2000);
-		}
-	} catch (err) {
-		logger.error('[PartyPanel] Failed to copy:', err);
-	}
-}
-
-/**
- * Send chat message
- */
-function sendMessage(): void {
-	const input = document.getElementById('party-message-input') as HTMLInputElement;
-	const text = input?.value.trim();
-
-	if (!text) return;
-
-	partyService.sendMessage(text);
-	input.value = '';
-}
-
-/**
- * Get content info from current page
- */
-function getContentFromPage(): { id: string; type: string; name: string } | null {
-	const hash = location.hash;
-
-	// Parse detail page URL
-	const movieMatch = hash.match(/#\/detail\/movie\/(tt\d+)/);
-	if (movieMatch) {
-		const title = document.querySelector('.metadetails-container-K_Dqa .name-vAXRt')?.textContent || 'Movie';
-		return { id: movieMatch[1], type: 'movie', name: title };
-	}
-
-	const seriesMatch = hash.match(/#\/detail\/series\/(tt\d+)/);
-	if (seriesMatch) {
-		const title = document.querySelector('.metadetails-container-K_Dqa .name-vAXRt')?.textContent || 'Series';
-		return { id: seriesMatch[1], type: 'series', name: title };
-	}
-
-	return null;
-}
-
-/**
- * Start video sync
- */
-function startVideoSync(): void {
-	// Get video element function
-	const getVideo = (): HTMLVideoElement | null => {
-		return document.querySelector('video');
-	};
-
-	// Start periodic sync
-	partyService.startSync(getVideo);
-
-	// Also sync on play/pause events
-	const setupVideoListeners = async (): Promise<void> => {
-		try {
-			await Helpers.waitForElm('video');
-			const video = document.querySelector('video');
-			if (!video) return;
-
-			videoSyncHandler = () => {
-				partyService.syncPlayer({
-					paused: video.paused,
-					buffering: video.readyState < 3,
-					time: video.currentTime
-				});
-			};
-
-			video.addEventListener('play', videoSyncHandler);
-			video.addEventListener('pause', videoSyncHandler);
-			video.addEventListener('seeked', videoSyncHandler);
-		} catch (err) {
-			// Video not found yet, will sync when available
-		}
-	};
-
-	setupVideoListeners();
-}
-
-/**
- * Stop video sync
- */
-function stopVideoSync(): void {
-	partyService.stopSync();
-
-	if (videoSyncHandler) {
-		const video = document.querySelector('video');
-		if (video) {
-			video.removeEventListener('play', videoSyncHandler);
-			video.removeEventListener('pause', videoSyncHandler);
-			video.removeEventListener('seeked', videoSyncHandler);
-		}
-		videoSyncHandler = null;
-	}
-}
-
-/**
- * Apply sync from room to video
- */
-function applyVideoSync(room: PartyRoom): void {
-	const video = document.querySelector('video');
-	if (!video || !room.player) return;
-
-	partyService.applySyncToVideo(video, room.player);
 }
 
 /**
@@ -562,17 +637,10 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * Cleanup on navigation
+ * Handle route changes
  */
 export function handlePartyNavigation(): void {
 	// Keep panel open when navigating
-	// But update content info if on detail page
-	if (location.hash.includes('#/detail/')) {
-		const content = getContentFromPage();
-		if (content) {
-			currentContentInfo = content;
-		}
-	}
 }
 
 /**
@@ -580,13 +648,11 @@ export function handlePartyNavigation(): void {
  */
 export function initPartyPanel(): void {
 	logger.info('[PartyPanel] Initializing party panel module...');
-	console.log('[PartyPanel] Initializing party panel module...');
 
 	// Listen for hash changes
 	window.addEventListener('hashchange', handlePartyNavigation);
 
 	logger.info('[PartyPanel] Module initialized successfully');
-	console.log('[PartyPanel] Module initialized successfully');
 }
 
 export default {

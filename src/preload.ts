@@ -13,7 +13,7 @@ import { getAboutCategoryTemplate } from "./components/about-category/aboutCateg
 import { applyUserAppearance, writeAppearance, setupAppearanceControls } from "./components/appearance-category/appearanceCategory";
 import { getTweaksIcon, writeTweaks, setupTweaksControls, applyTweaks, initPerformanceMode } from "./components/tweaks-category/tweaksCategory";
 import { handlePlusRoute, injectPlusNavButton, injectSettingsPlusBanner, resetPlusButtonInjection } from "./components/plus-page/plusPage";
-import { injectPearioButton, handlePearioRoute, resetPearioButtonInjection, initPartySystem } from "./components/peario-overlay/pearioOverlay";
+import { injectPartyButton, handlePartyRoute, resetPartyButtonInjection, initPartySystem } from "./components/party-button/partyButton";
 import partyService from "./utils/PartyService";
 import { writeStreamingPerformance, setupStreamingPerformanceControls } from "./components/streaming-performance/streamingPerformance";
 // NOTE: Theme UI removed - liquid-glass is locked
@@ -552,8 +552,8 @@ window.addEventListener("load", async () => {
     // Inject Plus nav button in top bar
     injectPlusNavButton();
 
-    // Inject Peario "Watch with Me" button on detail pages
-    injectPearioButton();
+    // Inject Watch Party button on detail pages
+    injectPartyButton();
 
     // Get transparency status once and reuse
     const isTransparencyEnabled = await getTransparencyStatus();
@@ -627,10 +627,10 @@ window.addEventListener("load", async () => {
             return;
         }
 
-        // Handle Peario overlay - close when navigating away, inject button on detail pages
-        handlePearioRoute();
-        resetPearioButtonInjection();
-        injectPearioButton();
+        // Handle party button - inject on detail pages
+        handlePartyRoute();
+        resetPartyButtonInjection();
+        injectPartyButton();
 
         // Clean up event listeners when leaving settings
         if (!location.href.includes("#/settings")) {
@@ -942,8 +942,7 @@ function refreshThemePosition(): void {
 
 // Bundled Stremio addons to auto-install on first login
 const BUNDLED_ADDONS = [
-    'https://torrentio.strem.fun/manifest.json',
-    'https://addon.peario.xyz/manifest.json'
+    'https://torrentio.strem.fun/manifest.json'
 ];
 
 /**
@@ -1784,12 +1783,12 @@ function initNavBarFixes(): void {
         navFixObserverActive = true;
     }
 
-    // Set up observer for Peario button on detail pages
-    registerObserverHandler('peario-button', () => {
+    // Set up observer for party button on detail pages
+    registerObserverHandler('party-button', () => {
         // Only inject on detail pages
         if (location.hash.includes('#/detail/')) {
-            if (!document.getElementById('peario-watch-button')) {
-                injectPearioButton();
+            if (!document.getElementById('party-watch-button')) {
+                injectPartyButton();
             }
         }
     });
@@ -2859,25 +2858,28 @@ async function saveCurrentStreamInfo(): Promise<void> {
 let lastSyncedStreamUrl: string | null = null;
 
 function setupPartyListeners(): void {
-    // Listen for room sync events (includes stream updates)
-    partyService.on('sync', (room: any) => {
-        // Don't navigate if we're the owner (we initiated this)
-        if (partyService.isOwner) {
-            return;
-        }
+    // Listen for stream update commands from host
+    partyService.on('command', ({ command, data }: { latency: number; command: string; data: any }) => {
+        // Handle stream update commands
+        if (command === 'updateStream') {
+            // Don't navigate if we're the host (we initiated this)
+            if (partyService.isHost) {
+                return;
+            }
 
-        // Check if stream URL changed
-        const streamUrl = room?.stream?.url;
-        if (streamUrl && streamUrl !== lastSyncedStreamUrl && streamUrl !== location.hash) {
-            logger.info('[Party] Received stream sync from owner:', streamUrl);
-            console.log('[Party] Received stream sync from owner:', streamUrl);
+            // Check if stream URL changed
+            const streamUrl = data?.url;
+            if (streamUrl && streamUrl !== lastSyncedStreamUrl && streamUrl !== location.hash) {
+                logger.info('[Party] Received stream sync from host:', streamUrl);
+                console.log('[Party] Received stream sync from host:', streamUrl);
 
-            lastSyncedStreamUrl = streamUrl;
+                lastSyncedStreamUrl = streamUrl;
 
-            // Navigate to the synced stream
-            logger.info('[Party] Navigating to synced stream:', streamUrl);
-            console.log('[Party] Navigating to synced stream:', streamUrl);
-            location.hash = streamUrl;
+                // Navigate to the synced stream
+                logger.info('[Party] Navigating to synced stream:', streamUrl);
+                console.log('[Party] Navigating to synced stream:', streamUrl);
+                location.hash = streamUrl;
+            }
         }
     });
 }
@@ -2888,13 +2890,13 @@ function setupPartyListeners(): void {
  */
 function syncStreamToParty(): void {
     try {
-        // Check if user is in a party and is the owner
-        if (!partyService.connected || !partyService.room || !partyService.isOwner) {
+        // Check if user is in a party and is the host
+        if (!partyService.connected || !partyService.room || !partyService.isHost) {
             return;
         }
 
-        logger.info('[Party] Owner navigated to player - syncing stream...');
-        console.log('[Party] Owner navigated to player - syncing stream...');
+        logger.info('[Party] Host navigated to player - syncing stream...');
+        console.log('[Party] Host navigated to player - syncing stream...');
 
         // Extract stream info from URL
         // Format: #/player/{videoId}/{streamHash}/{episodeId}
@@ -2908,16 +2910,16 @@ function syncStreamToParty(): void {
 
         const [, videoId, streamHash, episodeId] = playerMatch;
 
-        // Update room stream info (will be broadcast to all users)
-        partyService.send('room.updateStream', {
+        // Broadcast stream update to all party members
+        partyService.broadcastCommand('updateStream', {
             url: hash,
             videoId,
             streamHash,
             episodeId: episodeId || null
         });
 
-        logger.info('[Party] Stream updated in party:', { videoId, streamHash, episodeId });
-        console.log('[Party] Stream updated in party:', { videoId, streamHash, episodeId });
+        logger.info('[Party] Stream update broadcast to party:', { videoId, streamHash, episodeId });
+        console.log('[Party] Stream update broadcast to party:', { videoId, streamHash, episodeId });
     } catch (error) {
         logger.error('[Party] Error syncing stream:', error);
         console.error('[Party] Error syncing stream:', error);

@@ -51,9 +51,8 @@ export const SELECTORS = {
     PLUS_CONTENT: '#plus-content',
     PLUS_NAV_BUTTON: '#plus-nav-button',
 
-    // Peario overlay
-    PEARIO_WATCH_BUTTON: '#peario-watch-button',
-    PEARIO_OVERLAY: '#peario-overlay',
+    // Party system
+    PARTY_WATCH_BUTTON: '#party-watch-button',
     ACTION_BUTTONS_CONTAINER: '[class*="action-buttons-container"]',
 } as const;
 
@@ -160,7 +159,6 @@ export const URLS = {
     VERSION_CHECK: 'https://github.com/Bo0ii/StreamGo/raw/main/version',
     RELEASES_API: 'https://api.github.com/repos/Bo0ii/StreamGo/releases/latest',
     RELEASES_PAGE: 'https://github.com/Bo0ii/StreamGo/releases/latest',
-    PEARIO_BASE: 'https://peario.xyz',
 } as const;
 
 // server.js (Stremio streaming server) Download URL

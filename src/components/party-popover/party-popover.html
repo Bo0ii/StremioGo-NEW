@@ -24,24 +24,55 @@
         <div class="party-popover-content">
             <!-- Initial View (Create or Join) -->
             <div id="party-initial-view" class="party-view party-initial-view">
-                <div class="party-welcome">
-                    <div class="party-welcome-icon">
-                        <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
-                            <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
-                        </svg>
-                    </div>
-                    <h2>Watch Together</h2>
-                    <p>Create a party or join your friends</p>
+                <!-- Tab Buttons -->
+                <div class="party-tabs">
+                    <button id="party-create-tab" class="party-tab party-tab-active">Create</button>
+                    <button id="party-join-tab" class="party-tab">Join</button>
                 </div>
-                <div class="party-actions">
-                    <button id="party-create-btn" class="party-btn party-btn-primary">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+
+                <!-- Create Form -->
+                <div id="party-create-form" class="party-form">
+                    <div class="party-form-group">
+                        <label for="party-create-username">Username</label>
+                        <input type="text" id="party-create-username" class="party-input" placeholder="Your display name" maxlength="20" />
+                    </div>
+                    <div class="party-form-group">
+                        <label for="party-create-partyname">Party Name</label>
+                        <input type="text" id="party-create-partyname" class="party-input" placeholder="My Watch Party" maxlength="30" />
+                    </div>
+                    <div class="party-form-group">
+                        <label for="party-create-password">Password (optional)</label>
+                        <input type="password" id="party-create-password" class="party-input" placeholder="Leave empty for public" />
+                    </div>
+                    <div class="party-form-group party-checkbox-group">
+                        <input type="checkbox" id="party-create-joinashost" />
+                        <label for="party-create-joinashost">New members join as host</label>
+                    </div>
+                    <button id="party-create-submit" class="party-btn party-btn-primary party-btn-full">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                             <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
                         </svg>
                         Create Party
                     </button>
-                    <button id="party-join-btn" class="party-btn party-btn-secondary">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                </div>
+
+                <!-- Join Form (hidden by default) -->
+                <div id="party-join-form" class="party-form party-form-hidden">
+                    <div class="party-form-group">
+                        <label for="party-join-username">Username</label>
+                        <input type="text" id="party-join-username" class="party-input" placeholder="Your display name" maxlength="20" />
+                    </div>
+                    <div class="party-form-group">
+                        <label for="party-join-code">Party Code</label>
+                        <input type="text" id="party-join-code" class="party-input party-input-code" placeholder="e.g., SH7KM3" maxlength="10" />
+                    </div>
+                    <div class="party-form-group">
+                        <label for="party-join-password">Password (if required)</label>
+                        <input type="password" id="party-join-password" class="party-input" placeholder="Leave empty if none" />
+                    </div>
+                    <div id="party-join-error" class="party-error" style="display: none;"></div>
+                    <button id="party-join-submit" class="party-btn party-btn-primary party-btn-full">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                             <path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/>
                         </svg>
                         Join Party
@@ -49,34 +80,28 @@
                 </div>
             </div>
 
-            <!-- Join View (Enter PIN) -->
-            <div id="party-join-view" class="party-view party-join-view party-view-hidden">
-                <div class="party-form">
-                    <h3>Join Party</h3>
-                    <p class="party-form-desc">Enter the party PIN code</p>
-                    <input type="text" id="party-pin-input" class="party-input" placeholder="Paste full PIN code here" />
-                    <div class="party-form-actions">
-                        <button id="party-join-submit-btn" class="party-btn party-btn-primary">Join</button>
-                        <button id="party-join-back-btn" class="party-btn party-btn-secondary">Back</button>
-                    </div>
-                    <div id="party-join-error" class="party-error" style="display: none;"></div>
-                </div>
-            </div>
-
             <!-- Room View (Active Party) -->
             <div id="party-room-view" class="party-view party-room-view party-view-hidden">
                 <!-- Party Info -->
                 <div class="party-room-info">
+                    <div class="party-room-header">
+                        <div class="party-room-name-row">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                <path d="M12,2.09961l-11,9.90039h3v9h1h15v-9h3zM12,4.79102l6,5.40039v8.80859h-2v-6h-3v6h-7v-8.80859zM8,13v3h3v-3z"/>
+                            </svg>
+                            <span id="party-room-name" class="party-room-name">Watch Party</span>
+                        </div>
+                        <button id="party-leave-btn" class="party-btn party-btn-danger">Leave</button>
+                    </div>
                     <div class="party-pin-display">
-                        <span class="party-pin-label">Party PIN:</span>
+                        <span class="party-pin-label">Party Code:</span>
                         <span id="party-pin-code" class="party-pin-code">------</span>
-                        <button id="party-copy-pin-btn" class="party-icon-btn" title="Copy PIN">
+                        <button id="party-copy-pin-btn" class="party-icon-btn" title="Copy code">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                                 <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
                             </svg>
                         </button>
                     </div>
-                    <button id="party-leave-btn" class="party-btn party-btn-danger">Leave Party</button>
                 </div>
 
                 <!-- Participants List -->
@@ -100,7 +125,7 @@
                     </div>
                     <div id="party-chat-messages" class="party-chat-messages"></div>
                     <div class="party-chat-input">
-                        <input type="text" id="party-chat-input" class="party-input" placeholder="Type a message..." />
+                        <input type="text" id="party-chat-input" class="party-input" placeholder="Type a message..." maxlength="500" />
                         <button id="party-chat-send-btn" class="party-icon-btn party-icon-btn-primary">
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
@@ -263,47 +288,118 @@
         display: flex !important;
         flex-direction: column !important;
         padding: 24px !important;
+        overflow-y: auto !important;
     }
 
     .party-view-hidden {
         display: none !important;
     }
 
-    /* Initial View */
-    .party-initial-view {
-        align-items: center !important;
-        justify-content: center !important;
+    /* Tabs */
+    .party-tabs {
+        display: flex !important;
+        margin-bottom: 24px !important;
+        border-radius: 10px !important;
+        background: rgba(255, 255, 255, 0.05) !important;
+        padding: 4px !important;
     }
 
-    .party-welcome {
-        text-align: center !important;
-        margin-bottom: 32px !important;
-    }
-
-    .party-welcome-icon {
-        margin-bottom: 16px !important;
-        color: #7b5bf5 !important;
-    }
-
-    .party-welcome h2 {
-        margin: 0 0 8px 0 !important;
-        font-size: 24px !important;
+    .party-tab {
+        flex: 1 !important;
+        padding: 10px 20px !important;
+        background: transparent !important;
+        border: none !important;
+        color: rgba(255, 255, 255, 0.6) !important;
+        font-size: 14px !important;
         font-weight: 600 !important;
+        cursor: pointer !important;
+        border-radius: 8px !important;
+        transition: all 0.2s ease !important;
+        font-family: inherit !important;
+    }
+
+    .party-tab:hover {
+        color: rgba(255, 255, 255, 0.8) !important;
+    }
+
+    .party-tab-active {
+        background: #7b5bf5 !important;
         color: white !important;
     }
 
-    .party-welcome p {
-        margin: 0 !important;
-        font-size: 14px !important;
-        color: rgba(255, 255, 255, 0.6) !important;
-    }
-
-    .party-actions {
+    /* Forms */
+    .party-form {
         display: flex !important;
         flex-direction: column !important;
-        gap: 12px !important;
+        gap: 16px !important;
+    }
+
+    .party-form-hidden {
+        display: none !important;
+    }
+
+    .party-form-group {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 6px !important;
+    }
+
+    .party-form-group label {
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        color: rgba(255, 255, 255, 0.7) !important;
+    }
+
+    .party-checkbox-group {
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 10px !important;
+        padding: 12px !important;
+        background: rgba(255, 255, 255, 0.03) !important;
+        border-radius: 8px !important;
+    }
+
+    .party-checkbox-group input[type="checkbox"] {
+        width: 18px !important;
+        height: 18px !important;
+        accent-color: #7b5bf5 !important;
+        cursor: pointer !important;
+    }
+
+    .party-checkbox-group label {
+        font-size: 13px !important;
+        color: rgba(255, 255, 255, 0.8) !important;
+        cursor: pointer !important;
+    }
+
+    /* Inputs */
+    .party-input {
         width: 100% !important;
-        max-width: 280px !important;
+        padding: 12px 16px !important;
+        background: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 10px !important;
+        color: white !important;
+        font-size: 14px !important;
+        font-family: inherit !important;
+        box-sizing: border-box !important;
+        transition: all 0.2s ease !important;
+    }
+
+    .party-input:focus {
+        outline: none !important;
+        border-color: #7b5bf5 !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+    }
+
+    .party-input::placeholder {
+        color: rgba(255, 255, 255, 0.4) !important;
+    }
+
+    .party-input-code {
+        text-transform: uppercase !important;
+        letter-spacing: 2px !important;
+        font-weight: 600 !important;
     }
 
     /* Buttons */
@@ -320,6 +416,11 @@
         cursor: pointer !important;
         transition: all 0.2s ease !important;
         font-family: inherit !important;
+    }
+
+    .party-btn-full {
+        width: 100% !important;
+        margin-top: 8px !important;
     }
 
     .party-btn-primary {
@@ -382,66 +483,8 @@
         background: #6a4ce0 !important;
     }
 
-    /* Join View */
-    .party-join-view {
-        justify-content: center !important;
-    }
-
-    .party-form {
-        max-width: 320px !important;
-        width: 100% !important;
-    }
-
-    .party-form h3 {
-        margin: 0 0 8px 0 !important;
-        font-size: 20px !important;
-        font-weight: 600 !important;
-        color: white !important;
-        text-align: center !important;
-    }
-
-    .party-form-desc {
-        margin: 0 0 24px 0 !important;
-        font-size: 13px !important;
-        color: rgba(255, 255, 255, 0.6) !important;
-        text-align: center !important;
-    }
-
-    .party-input {
-        width: 100% !important;
-        padding: 12px 16px !important;
-        background: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: 10px !important;
-        color: white !important;
-        font-size: 14px !important;
-        font-family: inherit !important;
-        box-sizing: border-box !important;
-        transition: all 0.2s ease !important;
-    }
-
-    .party-input:focus {
-        outline: none !important;
-        border-color: #7b5bf5 !important;
-        background: rgba(255, 255, 255, 0.08) !important;
-    }
-
-    .party-input::placeholder {
-        color: rgba(255, 255, 255, 0.4) !important;
-    }
-
-    .party-form-actions {
-        display: flex !important;
-        gap: 12px !important;
-        margin-top: 16px !important;
-    }
-
-    .party-form-actions .party-btn {
-        flex: 1 !important;
-    }
-
+    /* Error */
     .party-error {
-        margin-top: 12px !important;
         padding: 10px 12px !important;
         background: rgba(255, 59, 48, 0.15) !important;
         border: 1px solid rgba(255, 59, 48, 0.3) !important;
@@ -454,41 +497,58 @@
     /* Room View */
     .party-room-view {
         padding: 16px !important;
-        overflow-y: auto !important;
     }
 
     .party-room-info {
+        margin-bottom: 16px !important;
+        padding: 14px !important;
+        background: rgba(123, 91, 245, 0.1) !important;
+        border: 1px solid rgba(123, 91, 245, 0.2) !important;
+        border-radius: 12px !important;
+    }
+
+    .party-room-header {
         display: flex !important;
         align-items: center !important;
         justify-content: space-between !important;
-        gap: 12px !important;
-        margin-bottom: 16px !important;
-        padding: 12px 14px !important;
-        background: rgba(123, 91, 245, 0.1) !important;
-        border: 1px solid rgba(123, 91, 245, 0.2) !important;
-        border-radius: 10px !important;
+        margin-bottom: 12px !important;
     }
 
-    .party-pin-display {
+    .party-room-name-row {
         display: flex !important;
         align-items: center !important;
         gap: 8px !important;
     }
 
+    .party-room-name-row svg {
+        color: #7b5bf5 !important;
+    }
+
+    .party-room-name {
+        font-size: 15px !important;
+        font-weight: 600 !important;
+        color: white !important;
+    }
+
+    .party-pin-display {
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+        padding-top: 12px !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+    }
+
     .party-pin-label {
         font-size: 12px !important;
-        color: rgba(255, 255, 255, 0.7) !important;
+        color: rgba(255, 255, 255, 0.6) !important;
     }
 
     .party-pin-code {
-        font-size: 14px !important;
-        font-weight: 600 !important;
+        font-size: 18px !important;
+        font-weight: 700 !important;
         color: #7b5bf5 !important;
-        letter-spacing: 1px !important;
+        letter-spacing: 2px !important;
         font-family: 'Courier New', monospace !important;
-        word-break: break-all !important;
-        line-height: 1.4 !important;
-        max-width: 220px !important;
     }
 
     /* Participants */
@@ -514,6 +574,8 @@
         display: flex !important;
         flex-direction: column !important;
         gap: 8px !important;
+        max-height: 150px !important;
+        overflow-y: auto !important;
     }
 
     .party-participant {
@@ -535,6 +597,7 @@
         font-weight: 600 !important;
         font-size: 14px !important;
         flex-shrink: 0 !important;
+        color: white !important;
     }
 
     .party-participant-name {
@@ -543,12 +606,41 @@
         color: white !important;
     }
 
-    .party-participant-owner {
-        font-size: 11px !important;
-        padding: 2px 8px !important;
-        background: rgba(123, 91, 245, 0.2) !important;
-        border-radius: 4px !important;
-        color: #7b5bf5 !important;
+    .party-participant-host {
+        display: flex !important;
+        align-items: center !important;
+    }
+
+    .party-host-crown {
+        width: 16px !important;
+        height: 16px !important;
+        fill: #9370db !important;
+    }
+
+    .party-toggle-host-btn {
+        width: 28px !important;
+        height: 28px !important;
+        padding: 0 !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        border: none !important;
+        border-radius: 6px !important;
+        cursor: pointer !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        opacity: 0.7 !important;
+        transition: all 0.2s ease !important;
+        color: white !important;
+    }
+
+    .party-toggle-host-btn:hover {
+        opacity: 1 !important;
+        background: rgba(147, 112, 219, 0.3) !important;
+    }
+
+    .party-toggle-host-btn svg {
+        width: 14px !important;
+        height: 14px !important;
     }
 
     /* Chat */
@@ -565,7 +657,9 @@
         margin-bottom: 12px !important;
         display: flex !important;
         flex-direction: column !important;
-        gap: 10px !important;
+        gap: 8px !important;
+        min-height: 100px !important;
+        max-height: 200px !important;
     }
 
     .party-chat-message {
@@ -574,17 +668,30 @@
         border-radius: 8px !important;
     }
 
+    .party-chat-message-system {
+        text-align: center !important;
+        color: rgba(255, 255, 255, 0.5) !important;
+        font-style: italic !important;
+        font-size: 12px !important;
+        background: transparent !important;
+    }
+
     .party-chat-message-header {
         display: flex !important;
         align-items: center !important;
-        gap: 8px !important;
+        gap: 6px !important;
         margin-bottom: 4px !important;
+    }
+
+    .party-chat-message-host {
+        width: 14px !important;
+        height: 14px !important;
+        fill: #9370db !important;
     }
 
     .party-chat-message-user {
         font-size: 12px !important;
         font-weight: 600 !important;
-        color: white !important;
     }
 
     .party-chat-message-time {
@@ -669,5 +776,27 @@
         color: rgba(255, 255, 255, 0.5) !important;
         text-transform: uppercase !important;
         letter-spacing: 0.5px !important;
+    }
+
+    /* Scrollbar */
+    .party-participants-list::-webkit-scrollbar,
+    .party-chat-messages::-webkit-scrollbar {
+        width: 6px !important;
+    }
+
+    .party-participants-list::-webkit-scrollbar-track,
+    .party-chat-messages::-webkit-scrollbar-track {
+        background: transparent !important;
+    }
+
+    .party-participants-list::-webkit-scrollbar-thumb,
+    .party-chat-messages::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.1) !important;
+        border-radius: 3px !important;
+    }
+
+    .party-participants-list::-webkit-scrollbar-thumb:hover,
+    .party-chat-messages::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.2) !important;
     }
 </style>
