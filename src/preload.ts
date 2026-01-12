@@ -601,10 +601,16 @@ window.addEventListener("load", async () => {
 
             // Sync stream to party if user is party owner
             syncStreamToParty();
+
+            // Initialize party video sync (play/pause/seek)
+            initPartyVideoSync();
         } else {
             // Cleanup player overlay and video filter when leaving player page
             cleanupPlayerOverlay();
             cleanupVideoFilter();
+
+            // Cleanup party video sync
+            cleanupPartyVideoSync();
 
             // Reset external player flag if stuck (safety mechanism)
             if (isHandlingExternalPlayer) {
@@ -2017,6 +2023,36 @@ function addTitleBar(): void {
     titleBar.querySelector("#closeApp-btn")?.addEventListener("click", () => {
         ipcRenderer.send(IPC_CHANNELS.CLOSE_WINDOW);
     });
+
+    // Party button
+    const partyBtn = titleBar.querySelector("#titlebar-party-btn");
+    if (partyBtn) {
+        partyBtn.addEventListener("click", () => {
+            // Import dynamically to avoid circular dependency
+            import("./components/party-popover/partyPopover").then(({ openPartyPopover }) => {
+                openPartyPopover();
+            });
+        });
+
+        // Update party button state
+        updateTitleBarPartyState();
+    }
+}
+
+/**
+ * Update title bar party button state
+ */
+function updateTitleBarPartyState(): void {
+    const partyBtn = document.querySelector("#titlebar-party-btn");
+    if (!partyBtn) return;
+
+    if (partyService.connected && partyService.room) {
+        partyBtn.classList.add("party-active");
+        partyBtn.setAttribute("title", `Watch Party: ${partyService.room.name} (${partyService.room.members.length} members)`);
+    } else {
+        partyBtn.classList.remove("party-active");
+        partyBtn.setAttribute("title", "Watch Party");
+    }
 }
 
 // Track if external player options are already being monitored
@@ -2853,35 +2889,272 @@ async function saveCurrentStreamInfo(): Promise<void> {
 }
 
 /**
- * Setup party event listeners
+ * Party Video Sync System
+ * Handles real-time video synchronization between party members
  */
 let lastSyncedStreamUrl: string | null = null;
+let partyVideoListenersActive = false;
+let partyVideoElement: HTMLVideoElement | null = null;
+let isRemoteAction = false; // Flag to prevent feedback loops
 
+// Video event handlers for party sync
+function onPartyVideoPlay(): void {
+    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
+    logger.info('[Party] Host played video - broadcasting');
+    partyService.broadcastStateChange(partyVideoElement!, true);
+}
+
+function onPartyVideoPause(): void {
+    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
+    logger.info('[Party] Host paused video - broadcasting');
+    partyService.broadcastStateChange(partyVideoElement!, true);
+}
+
+function onPartyVideoSeeked(): void {
+    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
+    logger.info('[Party] Host seeked video - broadcasting');
+    partyService.broadcastStateChange(partyVideoElement!, true);
+}
+
+function onPartyVideoRateChange(): void {
+    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
+    logger.info('[Party] Host changed playback rate - broadcasting');
+    partyService.broadcastStateChange(partyVideoElement!, false);
+}
+
+/**
+ * Initialize party video sync when entering player
+ */
+function initPartyVideoSync(): void {
+    if (!partyService.connected || !partyService.room) {
+        logger.info('[Party] Not in party, skipping video sync init');
+        return;
+    }
+
+    // Wait for video element
+    const checkForVideo = setInterval(() => {
+        const video = document.querySelector('video') as HTMLVideoElement;
+        if (video) {
+            clearInterval(checkForVideo);
+            setupPartyVideoListeners(video);
+        }
+    }, 200);
+
+    // Stop checking after 10 seconds
+    setTimeout(() => clearInterval(checkForVideo), 10000);
+}
+
+/**
+ * Setup video event listeners for party sync
+ */
+function setupPartyVideoListeners(video: HTMLVideoElement): void {
+    if (partyVideoListenersActive) return;
+
+    partyVideoElement = video;
+    partyVideoListenersActive = true;
+
+    logger.info('[Party] Setting up video sync listeners, isHost:', partyService.isHost);
+
+    // Add event listeners for host to broadcast changes
+    video.addEventListener('play', onPartyVideoPlay);
+    video.addEventListener('pause', onPartyVideoPause);
+    video.addEventListener('seeked', onPartyVideoSeeked);
+    video.addEventListener('ratechange', onPartyVideoRateChange);
+
+    // Start periodic sync if host
+    if (partyService.isHost) {
+        partyService.startSync(() => partyVideoElement);
+        logger.info('[Party] Started periodic sync as host');
+    }
+
+    logger.info('[Party] Video sync listeners active');
+}
+
+/**
+ * Cleanup party video sync when leaving player
+ */
+function cleanupPartyVideoSync(): void {
+    if (!partyVideoListenersActive || !partyVideoElement) return;
+
+    logger.info('[Party] Cleaning up video sync listeners');
+
+    partyVideoElement.removeEventListener('play', onPartyVideoPlay);
+    partyVideoElement.removeEventListener('pause', onPartyVideoPause);
+    partyVideoElement.removeEventListener('seeked', onPartyVideoSeeked);
+    partyVideoElement.removeEventListener('ratechange', onPartyVideoRateChange);
+
+    partyService.stopSync();
+    partyVideoElement = null;
+    partyVideoListenersActive = false;
+}
+
+/**
+ * Setup party event listeners (called once on startup)
+ */
 function setupPartyListeners(): void {
-    // Listen for stream update commands from host
-    partyService.on('command', ({ command, data }: { latency: number; command: string; data: any }) => {
-        // Handle stream update commands
-        if (command === 'updateStream') {
-            // Don't navigate if we're the host (we initiated this)
-            if (partyService.isHost) {
-                return;
-            }
+    // Listen for commands from host
+    partyService.on('command', ({ latency, command, data }: { latency: number; command: string; data: any }) => {
+        logger.info('[Party] Received command:', command);
 
-            // Check if stream URL changed
+        // Handle stream update commands (navigate to same video)
+        if (command === 'updateStream') {
+            if (partyService.isHost) return;
+
             const streamUrl = data?.url;
             if (streamUrl && streamUrl !== lastSyncedStreamUrl && streamUrl !== location.hash) {
                 logger.info('[Party] Received stream sync from host:', streamUrl);
-                console.log('[Party] Received stream sync from host:', streamUrl);
-
                 lastSyncedStreamUrl = streamUrl;
-
-                // Navigate to the synced stream
-                logger.info('[Party] Navigating to synced stream:', streamUrl);
-                console.log('[Party] Navigating to synced stream:', streamUrl);
                 location.hash = streamUrl;
+            }
+            return;
+        }
+
+        // Handle video state sync commands (play/pause/seek)
+        if (command === 'state') {
+            if (partyService.isHost) return;
+
+            const video = document.querySelector('video') as HTMLVideoElement;
+            if (!video || !partyService.autoSync) return;
+
+            // Set flag to prevent feedback loop
+            isRemoteAction = true;
+
+            try {
+                const stateData = data as { time: number; paused: boolean; playbackSpeed?: number; force?: boolean };
+
+                // Calculate latency compensation
+                const latencySeconds = (latency + partyService.latency) / 1000;
+                const targetTime = stateData.time + latencySeconds;
+                const timeDiff = Math.abs(video.currentTime - targetTime);
+
+                // Sync time if difference is significant or forced
+                const maxDelay = 0.5 * (stateData.playbackSpeed || 1);
+                if (timeDiff > maxDelay || stateData.force) {
+                    logger.info('[Party] Syncing time:', targetTime, 'diff:', timeDiff);
+                    video.currentTime = targetTime;
+                }
+
+                // Sync play/pause state
+                if (stateData.paused !== video.paused) {
+                    if (stateData.paused) {
+                        logger.info('[Party] Syncing: pause');
+                        video.pause();
+                    } else {
+                        logger.info('[Party] Syncing: play');
+                        video.play().catch(() => {});
+                    }
+                }
+
+                // Sync playback speed
+                if (stateData.playbackSpeed && video.playbackRate !== stateData.playbackSpeed) {
+                    video.playbackRate = stateData.playbackSpeed;
+                }
+            } finally {
+                // Reset flag after a short delay to allow events to fire
+                setTimeout(() => { isRemoteAction = false; }, 100);
             }
         }
     });
+
+    // Listen for chat messages to show overlay in player
+    partyService.on('message', (msg: { senderId: string; senderName: string; text: string }) => {
+        if (msg.senderId === 'system') return;
+
+        // Show chat overlay if in player
+        if (location.hash.includes('#/player')) {
+            showPartyChatOverlay(msg.senderName, msg.text);
+        }
+    });
+
+    // Update title bar when room state changes
+    partyService.on('room', () => {
+        updateTitleBarPartyState();
+    });
+
+    partyService.on('disconnected', () => {
+        updateTitleBarPartyState();
+    });
+
+    logger.info('[Party] Party listeners initialized');
+}
+
+/**
+ * Show chat message overlay in player
+ */
+function showPartyChatOverlay(senderName: string, text: string): void {
+    // Create or reuse container
+    let container = document.getElementById('party-chat-overlay-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'party-chat-overlay-container';
+        container.style.cssText = `
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            z-index: 999999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 300px;
+            pointer-events: none;
+        `;
+        document.body.appendChild(container);
+    }
+
+    // Create message element
+    const msgEl = document.createElement('div');
+    msgEl.className = 'party-chat-overlay-msg';
+    msgEl.style.cssText = `
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(10px);
+        padding: 8px 12px;
+        border-radius: 8px;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 13px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        animation: partyChatFadeIn 0.3s ease-out;
+        opacity: 0.85;
+    `;
+    msgEl.innerHTML = `<strong style="color: #7b5bf5;">${escapeHtml(senderName)}:</strong> ${escapeHtml(text)}`;
+
+    // Add animation styles if not present
+    if (!document.getElementById('party-chat-overlay-styles')) {
+        const style = document.createElement('style');
+        style.id = 'party-chat-overlay-styles';
+        style.textContent = `
+            @keyframes partyChatFadeIn {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 0.85; transform: translateY(0); }
+            }
+            @keyframes partyChatFadeOut {
+                from { opacity: 0.85; transform: translateY(0); }
+                to { opacity: 0; transform: translateY(-10px); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    container.appendChild(msgEl);
+
+    // Remove after 5 seconds
+    setTimeout(() => {
+        msgEl.style.animation = 'partyChatFadeOut 0.3s ease-out forwards';
+        setTimeout(() => msgEl.remove(), 300);
+    }, 5000);
+
+    // Keep only last 3 messages
+    while (container.children.length > 3) {
+        container.firstChild?.remove();
+    }
+}
+
+/**
+ * Helper to escape HTML
+ */
+function escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 /**
@@ -2890,16 +3163,12 @@ function setupPartyListeners(): void {
  */
 function syncStreamToParty(): void {
     try {
-        // Check if user is in a party and is the host
         if (!partyService.connected || !partyService.room || !partyService.isHost) {
             return;
         }
 
         logger.info('[Party] Host navigated to player - syncing stream...');
-        console.log('[Party] Host navigated to player - syncing stream...');
 
-        // Extract stream info from URL
-        // Format: #/player/{videoId}/{streamHash}/{episodeId}
         const hash = location.hash;
         const playerMatch = hash.match(/#\/player\/([^/]+)\/([^/]+)(?:\/(.+))?/);
 
@@ -2910,7 +3179,6 @@ function syncStreamToParty(): void {
 
         const [, videoId, streamHash, episodeId] = playerMatch;
 
-        // Broadcast stream update to all party members
         partyService.broadcastCommand('updateStream', {
             url: hash,
             videoId,
@@ -2918,11 +3186,9 @@ function syncStreamToParty(): void {
             episodeId: episodeId || null
         });
 
-        logger.info('[Party] Stream update broadcast to party:', { videoId, streamHash, episodeId });
-        console.log('[Party] Stream update broadcast to party:', { videoId, streamHash, episodeId });
+        logger.info('[Party] Stream update broadcast to party');
     } catch (error) {
         logger.error('[Party] Error syncing stream:', error);
-        console.error('[Party] Error syncing stream:', error);
     }
 }
 
