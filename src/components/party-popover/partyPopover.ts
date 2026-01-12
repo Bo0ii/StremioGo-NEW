@@ -6,6 +6,7 @@ import partyService from '../../utils/PartyService';
 let popoverElement: HTMLElement | null = null;
 let isOpen = false;
 let currentContentInfo: { id: string; type: string; name: string } | null = null;
+let isJoiningMode = false; // Track if we're joining an existing party vs creating a new one
 
 // View elements
 let initialView: HTMLElement | null = null;
@@ -175,6 +176,8 @@ function handleCreateParty(): void {
 	logger.info('[PartyPopover] Creating party...');
 	console.log('[PartyPopover] Creating party...');
 
+	isJoiningMode = false; // We're creating, not joining
+
 	showView('loading');
 	setLoadingText('Connecting...');
 
@@ -212,6 +215,8 @@ function handleJoinPartySubmit(): void {
 
 	logger.info('[PartyPopover] Joining party:', pin);
 	console.log('[PartyPopover] Joining party:', pin);
+
+	isJoiningMode = true; // We're joining, not creating
 
 	hideJoinError();
 	showView('loading');
@@ -273,6 +278,9 @@ function handleLeaveParty(): void {
 
 	// Remove all listeners to prevent memory leaks
 	partyService.removeAllListeners();
+
+	// Reset state
+	isJoiningMode = false;
 
 	// Close the popover
 	closePartyPopover();
@@ -359,6 +367,13 @@ function setupPartyServiceListeners(): void {
 	partyService.on('ready', (data) => {
 		logger.info('[PartyPopover] Ready:', data);
 		console.log('[PartyPopover] Ready:', data);
+
+		// Only create a room if we're NOT joining an existing party
+		if (isJoiningMode) {
+			logger.info('[PartyPopover] Skipping room creation - joining mode');
+			console.log('[PartyPopover] Skipping room creation - joining mode');
+			return;
+		}
 
 		// If we're creating a party, send room.new
 		if (!currentContentInfo) return;
@@ -587,6 +602,7 @@ export function closePartyPopover(): void {
 	roomView = null;
 	loadingView = null;
 	isOpen = false;
+	isJoiningMode = false; // Reset joining mode
 
 	// Cleanup event listeners
 	document.removeEventListener('keydown', handleEscape);
