@@ -58,4 +58,5 @@ stremio-service/*.deb
 stremio-service/*.rpm
 stremio-service/*.dmg
 stremio-service/*.flatpak
-stremio-service/deb-extract
+stremio-service/deb-extracttmpclaude-*-cwd
+.planning/agent-history.json
