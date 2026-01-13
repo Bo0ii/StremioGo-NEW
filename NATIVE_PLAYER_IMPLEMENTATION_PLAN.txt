@@ -1,0 +1,477 @@
+================================================================================
+NATIVE MPV PLAYER - 1:1 REFERENCE IMPLEMENTATION PLAN
+================================================================================
+
+GOAL: Replicate stremio-community-v5-webview-windows MPV implementation exactly
+      - MPV embedded in-process using libmpv library (NOT child_process)
+      - Seamless replacement of web player UI
+      - No external windows, no purple player
+      - Native, reliable, fast communication
+
+================================================================================
+CURRENT PROBLEMS TO FIX
+================================================================================
+
+1. Using child_process.spawn() - creates separate MPV process
+   - Cannot embed properly with --wid (window already exists)
+   - IPC socket timing issues
+   - Race conditions on reinitialize
+
+2. MPV shows as external window with purple "drop files" UI
+   - Should be invisible, rendered INTO web player container
+
+3. Auto-reinitialize causes conflicts
+   - Old process shutting down while new one starting
+   - Named pipe conflicts (ENOENT errors)
+
+================================================================================
+REFERENCE IMPLEMENTATION ARCHITECTURE (C++)
+================================================================================
+
+File: stremio-community-v5-webview-windows/src/mpv/player.cpp
+
+KEY COMPONENTS:
+---------------
+
+1. LIBMPV LIBRARY (in-process)
+   - #include <mpv/client.h>
+   - mpv_handle* g_mpv = mpv_create()
+   - Direct API calls, no IPC needed
+   - Synchronous, instant communication
+
+2. INITIALIZATION SEQUENCE (main.cpp line 147):
+   - Create main window (HWND)
+   - InitMPV(hwnd) - BEFORE webview
+   - Set wid BEFORE mpv_initialize()
+   - Then create webview
+
+3. WINDOW EMBEDDING:
+   - mpv_set_option(g_mpv, "wid", MPV_FORMAT_INT64, &wid)
+   - Set BEFORE mpv_initialize() is called
+   - MPV renders directly into HWND, never creates own window
+
+4. EVENT HANDLING:
+   - mpv_set_wakeup_callback() -> Posts WM_MPV_WAKEUP message
+   - Main message loop calls HandleMpvEvents()
+   - mpv_wait_event() gets events synchronously
+   - No IPC socket, no async issues
+
+5. CONFIGURATION:
+   - portable_config directory
+   - mpv_set_option_string() for all settings
+   - Applied BEFORE mpv_initialize()
+
+================================================================================
+IMPLEMENTATION PLAN FOR ELECTRON/NODE.JS
+================================================================================
+
+APPROACH: Use native Node.js addon (N-API) to wrap libmpv
+          - Similar to how reference uses C++ with libmpv
+          - Creates in-process MPV instance
+          - Direct API access via native bindings
+
+--------------------------------------------------------------------------------
+PHASE 1: SETUP NATIVE ADDON INFRASTRUCTURE
+--------------------------------------------------------------------------------
+
+STEP 1.1: Create native addon structure
+-----------------------------------------
+Create directories:
+  - native/
+    - mpv/
+      - mpv.cpp          (main implementation)
+      - mpv.h            (header)
+      - binding.gyp      (build config)
+      - package.json
+
+STEP 1.2: Install dependencies
+-------------------------------
+npm install --save-dev:
+  - node-gyp
+  - node-addon-api
+
+Download libmpv:
+  - Windows: mpv-dev-x86_64-*.7z from mpv.io
+  - Extract to: native/mpv/lib/
+  - Include files: native/mpv/include/mpv/
+
+STEP 1.3: Create binding.gyp
+-----------------------------
+{
+  "targets": [{
+    "target_name": "mpv_native",
+    "sources": [ "mpv.cpp" ],
+    "include_dirs": [
+      "<!@(node -p \"require('node-addon-api').include\")",
+      "include"
+    ],
+    "libraries": [
+      "../lib/mpv.lib"
+    ],
+    "copies": [{
+      "destination": "<(module_root_dir)/build/Release/",
+      "files": [ "lib/mpv-2.dll" ]
+    }],
+    "defines": [ "NAPI_DISABLE_CPP_EXCEPTIONS" ]
+  }]
+}
+
+--------------------------------------------------------------------------------
+PHASE 2: IMPLEMENT LIBMPV WRAPPER (C++)
+--------------------------------------------------------------------------------
+
+STEP 2.1: Create mpv.cpp - Core Implementation
+-----------------------------------------------
+Based on: stremio-community-v5-webview-windows/src/mpv/player.cpp
+
+File: native/mpv/mpv.cpp
+
+Implement functions:
+
+1. Initialize(hwnd)
+   - mpv_handle* mpv = mpv_create()
+   - mpv_set_option_string(mpv, "config-dir", ...)
+   - mpv_set_option(mpv, "wid", MPV_FORMAT_INT64, &hwnd)  // CRITICAL!
+   - mpv_set_wakeup_callback(mpv, WakeupCallback, ...)
+   - mpv_initialize(mpv)
+   - Set all options (vo, hwdec, cache, etc.)
+
+2. LoadFile(url)
+   - const char* cmd[] = {"loadfile", url, NULL}
+   - mpv_command(mpv, cmd)
+
+3. SetProperty(name, value)
+   - mpv_set_property_string(mpv, name, value)
+
+4. GetProperty(name)
+   - mpv_get_property(mpv, name, format, &data)
+
+5. ObserveProperty(name, id)
+   - mpv_observe_property(mpv, id, name, MPV_FORMAT_NODE)
+
+6. HandleEvents()
+   - while(1) {
+       mpv_event* ev = mpv_wait_event(mpv, 0);
+       if (ev->event_id == MPV_EVENT_NONE) break;
+       // Convert to JSON and send to JS
+     }
+
+7. Cleanup()
+   - mpv_terminate_destroy(mpv)
+
+STEP 2.2: Event Conversion
+---------------------------
+Convert mpv_event to JSON (like reference):
+- MPV_EVENT_PROPERTY_CHANGE -> { type: "mpv-prop-change", id, name, data }
+- MPV_EVENT_END_FILE -> { type: "mpv-event-ended", reason }
+- Convert mpv_node to JSON (handle all formats)
+
+STEP 2.3: N-API Exports
+------------------------
+Export to Node.js:
+- exports.initialize = Initialize
+- exports.loadFile = LoadFile
+- exports.setProperty = SetProperty
+- exports.getProperty = GetProperty
+- exports.observeProperty = ObserveProperty
+- exports.handleEvents = HandleEvents
+- exports.cleanup = Cleanup
+
+--------------------------------------------------------------------------------
+PHASE 3: TYPESCRIPT WRAPPER
+--------------------------------------------------------------------------------
+
+STEP 3.1: Create MpvNative.ts
+------------------------------
+File: src/utils/MpvNative.ts
+
+import * as mpvNative from '../../native/mpv/build/Release/mpv_native';
+
+class MpvNative {
+  private hwnd: Buffer;
+  private eventCallback: (event: any) => void;
+
+  async initialize(window: BrowserWindow): Promise<void> {
+    this.hwnd = window.getNativeWindowHandle();
+    const hwndInt = this.hwnd.readUInt32LE(0);
+
+    mpvNative.initialize(hwndInt);
+
+    // Start event loop
+    this.startEventLoop();
+  }
+
+  private startEventLoop(): void {
+    setInterval(() => {
+      mpvNative.handleEvents();
+    }, 16); // ~60fps
+  }
+
+  loadVideo(url: string): void {
+    mpvNative.loadFile(url);
+  }
+
+  setProperty(name: string, value: any): void {
+    mpvNative.setProperty(name, String(value));
+  }
+
+  observeProperty(name: string, id: number): void {
+    mpvNative.observeProperty(name, id);
+  }
+
+  cleanup(): void {
+    mpvNative.cleanup();
+  }
+}
+
+STEP 3.2: Replace MpvManager.ts
+--------------------------------
+File: src/utils/MpvManager.ts
+
+Remove:
+- All child_process code
+- IPC socket code
+- spawn() calls
+- Named pipe handling
+
+Replace with:
+- Import MpvNative
+- Call mpvNative.initialize(mainWindow)
+- Use direct API calls
+- Handle events via callback
+
+--------------------------------------------------------------------------------
+PHASE 4: MAIN PROCESS INTEGRATION
+--------------------------------------------------------------------------------
+
+STEP 4.1: Initialize at startup (like reference)
+-------------------------------------------------
+File: src/main.ts
+
+async function createWindow() {
+  mainWindow = new BrowserWindow({ ... });
+
+  // Initialize MPV BEFORE loading URL
+  if (nativePlayerEnabled) {
+    await initializeNativePlayer(mainWindow);  // Synchronous init
+  }
+
+  // Then load webview
+  mainWindow.loadURL('https://web.stremio.com');
+}
+
+STEP 4.2: Event handling
+-------------------------
+- MpvNative sends events to main process
+- Main process forwards to renderer via IPC
+- Same event format as current code
+
+--------------------------------------------------------------------------------
+PHASE 5: RENDERER INTEGRATION
+--------------------------------------------------------------------------------
+
+STEP 5.1: Native Player Injector
+---------------------------------
+File: src/components/native-player-injector/nativePlayerInjector.ts
+
+When player route detected:
+1. Get stream URL from Stremio's video element
+2. Send NATIVE_PLAYER_LOAD to main process
+3. Main process calls mpvNative.loadFile(url)
+4. MPV renders INTO the web player container
+5. NO separate window created
+
+STEP 5.2: Container setup
+--------------------------
+Create invisible container for MPV:
+- Position over Stremio's video player
+- MPV renders into this container via WID
+- Web player UI overlays on top
+- Controls work via IPC to MPV
+
+--------------------------------------------------------------------------------
+PHASE 6: CONFIGURATION
+--------------------------------------------------------------------------------
+
+STEP 6.1: Portable config directory
+------------------------------------
+Create: %APPDATA%/streamgo/native-player/config/
+
+Files:
+- mpv.conf (same as reference)
+- input.conf (keyboard shortcuts)
+- scripts/ (ThumbFast, etc.)
+
+STEP 6.2: Default options (from reference)
+-------------------------------------------
+Set in mpv.cpp Initialize():
+
+mpv_set_option_string(mpv, "vo", "gpu-next");
+mpv_set_property_string(mpv, "demuxer-max-bytes", "300000000");
+mpv_set_property_string(mpv, "cache", "yes");
+mpv_set_property_string(mpv, "cache-secs", "60");
+mpv_set_property_string(mpv, "vd-lavc-threads", "0");
+mpv_set_property_string(mpv, "ad-lavc-threads", "0");
+mpv_set_property_string(mpv, "audio-fallback-to-null", "yes");
+mpv_set_property_string(mpv, "hwdec", "auto");
+
+--------------------------------------------------------------------------------
+PHASE 7: BUILD & DEPLOYMENT
+--------------------------------------------------------------------------------
+
+STEP 7.1: Build native addon
+-----------------------------
+Commands:
+  cd native/mpv
+  node-gyp configure
+  node-gyp build
+
+Output: build/Release/mpv_native.node
+
+STEP 7.2: Package with Electron
+--------------------------------
+Copy to dist/:
+  - mpv_native.node
+  - mpv-2.dll
+
+electron-builder config:
+  extraFiles: [
+    { from: "native/mpv/build/Release", to: "native" }
+  ]
+
+STEP 7.3: Update package.json
+------------------------------
+Add scripts:
+  "build:native": "cd native/mpv && node-gyp rebuild",
+  "rebuild": "npm run build:native && npm run dist"
+
+================================================================================
+CRITICAL IMPLEMENTATION DETAILS (FROM REFERENCE)
+================================================================================
+
+1. WID MUST BE SET BEFORE mpv_initialize()
+   - This is why reference works and our approach doesn't
+   - Once mpv_initialize() is called, window is created
+   - Setting wid after = reparenting (doesn't work properly)
+   - Setting wid before = MPV never creates window
+
+2. Event loop in main thread
+   - Don't use separate thread
+   - Call mpv_wait_event(mpv, 0) from main loop
+   - Or use timer (16ms for 60fps)
+
+3. Property observation
+   - Call mpv_observe_property() for: pause, time-pos, duration, volume, speed
+   - Events come via MPV_EVENT_PROPERTY_CHANGE
+   - No manual polling needed
+
+4. Cleanup on exit
+   - mpv_terminate_destroy() in app exit handler
+   - Don't call quit command, just destroy handle
+
+5. No auto-reinitialize
+   - MPV stays alive entire app lifetime
+   - Only destroy on app close
+   - If video ends, MPV stays idle (--idle=yes)
+
+================================================================================
+TESTING PLAN
+================================================================================
+
+PHASE 1: Basic functionality
+-----------------------------
+1. Build native addon
+2. Test mpv_create() and mpv_initialize()
+3. Verify no window appears
+4. Test loadfile with local video
+
+PHASE 2: Window embedding
+--------------------------
+1. Create container div in renderer
+2. Set WID to container HWND
+3. Load video
+4. Verify video renders in container
+
+PHASE 3: Controls
+-----------------
+1. Test play/pause
+2. Test seek
+3. Test volume
+4. Verify property changes
+
+PHASE 4: Integration
+--------------------
+1. Test with Stremio web player
+2. Replace web player seamlessly
+3. Verify no visual glitches
+4. Test multiple videos
+
+PHASE 5: Stability
+------------------
+1. Test long playback sessions
+2. Test switching videos
+3. Test error handling
+4. Memory leak testing
+
+================================================================================
+ESTIMATED TIMELINE
+================================================================================
+
+Phase 1 (Setup):           2-4 hours
+Phase 2 (C++ wrapper):     8-12 hours
+Phase 3 (TS integration):  4-6 hours
+Phase 4 (Main process):    2-3 hours
+Phase 5 (Renderer):        3-4 hours
+Phase 6 (Config):          1-2 hours
+Phase 7 (Build):           2-3 hours
+
+Total: 22-34 hours
+
+================================================================================
+PREREQUISITES
+================================================================================
+
+1. Install Visual Studio Build Tools (for node-gyp)
+2. Download libmpv development files
+3. Understanding of N-API and native addons
+4. C++ knowledge for wrapper implementation
+
+================================================================================
+ALTERNATIVE: USE EXISTING LIBMPV NODE BINDING
+================================================================================
+
+Instead of writing from scratch, could use:
+- mpv.js (https://github.com/Kagami/mpv.js) - but for browser
+- node-mpv (https://github.com/00SteinsGate00/Node-MPV) - uses IPC
+- Write minimal binding just for what we need
+
+Pros: Faster development
+Cons: May not have exact control we need
+
+================================================================================
+RECOMMENDED NEXT STEPS
+================================================================================
+
+1. Study reference implementation thoroughly
+   - Read player.cpp line by line
+   - Understand event flow
+   - Note all mpv options used
+
+2. Set up development environment
+   - Install node-gyp
+   - Download libmpv
+   - Create basic test addon
+
+3. Implement minimal viable version
+   - Just initialize + loadfile + cleanup
+   - Get window embedding working first
+   - Add features incrementally
+
+4. Test extensively before deploying
+   - Multiple video formats
+   - Error conditions
+   - Edge cases
+
+================================================================================
+END OF PLAN
+================================================================================
