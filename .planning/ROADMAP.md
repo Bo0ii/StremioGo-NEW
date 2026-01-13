@@ -100,9 +100,10 @@ Plans:
 **Depends on**: Phase 7
 **Research**: Unlikely (grep/search operations)
 **Plans**: 2 plans
+**Status**: In progress
 
 Plans:
-- [ ] 08-01: Search for MPV/native-player/V5 references across codebase
+- [x] 08-01: Search for MPV/native-player/V5 references across codebase
 - [ ] 08-02: Document cleanup completion and verify all requirements met
 
 ## Progress
@@ -116,4 +117,4 @@ Plans:
 | 5. Main Process Cleanup | 1/1 | Complete | 2026-01-14 |
 | 6. Preload Script Cleanup | 1/1 | Complete | 2026-01-14 |
 | 7. Build & Verification | 2/2 | Complete | 2026-01-14 |
-| 8. Final Validation | 0/2 | Not started | - |
+| 8. Final Validation | 1/2 | In progress | - |
