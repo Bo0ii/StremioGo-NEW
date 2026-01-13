@@ -15,7 +15,7 @@ None
 - [x] **Phase 3: UI Cleanup** - Remove native player subpage from Plus Page *(completed 2026-01-14)*
 - [x] **Phase 4: Dependencies & Configuration** - Clean up package.json and config files *(completed 2026-01-14)*
 - [x] **Phase 5: Main Process Cleanup** - Remove MPV integration from main.ts *(completed 2026-01-14)*
-- [ ] **Phase 6: Preload Script Cleanup** - Remove MPV integration from preload.ts
+- [x] **Phase 6: Preload Script Cleanup** - Remove MPV integration from preload.ts *(completed 2026-01-14)*
 - [ ] **Phase 7: Build & Verification** - Ensure app builds and runs correctly
 - [ ] **Phase 8: Final Validation** - Comprehensive search for remaining references
 
@@ -79,9 +79,10 @@ Plans:
 **Depends on**: Phase 5
 **Research**: Unlikely (removing integration code from known files)
 **Plans**: 1 plan
+**Status**: Complete
 
 Plans:
-- [ ] 06-01: Remove MPV-related imports and initialization from preload.ts
+- [x] 06-01: Verify preload.ts is clean (already completed in earlier commit)
 
 ### Phase 7: Build & Verification
 **Goal**: Ensure app builds and runs correctly after cleanup
@@ -112,6 +113,6 @@ Plans:
 | 3. UI Cleanup | 2/2 | Complete | 2026-01-14 |
 | 4. Dependencies & Configuration | 1/1 | Complete | 2026-01-14 |
 | 5. Main Process Cleanup | 1/1 | Complete | 2026-01-14 |
-| 6. Preload Script Cleanup | 0/1 | Not started | - |
+| 6. Preload Script Cleanup | 1/1 | Complete | 2026-01-14 |
 | 7. Build & Verification | 0/2 | Not started | - |
 | 8. Final Validation | 0/2 | Not started | - |
