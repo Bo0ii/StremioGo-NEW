@@ -10,7 +10,7 @@ None
 
 ## Phases
 
-- [ ] **Phase 1: Investigation & Mapping** - Identify all MPV/V5 integration points
+- [x] **Phase 1: Investigation & Mapping** - Identify all MPV/V5 integration points *(completed 2026-01-14)*
 - [ ] **Phase 2: Core File Removal** - Remove main integration files and directories
 - [ ] **Phase 3: UI Cleanup** - Remove native player subpage from Plus Page
 - [ ] **Phase 4: Dependencies & Configuration** - Clean up package.json and config files
@@ -28,8 +28,8 @@ None
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: Compare against reference directory and search for integration files
-- [ ] 01-02: Document all integration points and dependencies
+- [x] 01-01: Compare against reference directory and search for integration files
+- [x] 01-02: Document all integration points and dependencies
 
 ### Phase 2: Core File Removal
 **Goal**: Remove main MPV integration files and directories
@@ -103,7 +103,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Investigation & Mapping | 0/2 | Not started | - |
+| 1. Investigation & Mapping | 2/2 | Complete | 2026-01-14 |
 | 2. Core File Removal | 0/3 | Not started | - |
 | 3. UI Cleanup | 0/2 | Not started | - |
 | 4. Dependencies & Configuration | 0/1 | Not started | - |
