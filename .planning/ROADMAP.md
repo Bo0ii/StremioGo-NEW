@@ -12,7 +12,7 @@ None
 
 - [x] **Phase 1: Investigation & Mapping** - Identify all MPV/V5 integration points *(completed 2026-01-14)*
 - [x] **Phase 2: Core File Removal** - Remove main integration files and directories *(completed 2026-01-14)*
-- [ ] **Phase 3: UI Cleanup** - Remove native player subpage from Plus Page
+- [x] **Phase 3: UI Cleanup** - Remove native player subpage from Plus Page *(completed 2026-01-14)*
 - [ ] **Phase 4: Dependencies & Configuration** - Clean up package.json and config files
 - [ ] **Phase 5: Main Process Cleanup** - Remove MPV integration from main.ts
 - [ ] **Phase 6: Preload Script Cleanup** - Remove MPV integration from preload.ts
@@ -36,21 +36,23 @@ Plans:
 **Depends on**: Phase 1
 **Research**: Unlikely (removing files we've already identified)
 **Plans**: 3 plans
+**Status**: Complete
 
 Plans:
-- [ ] 02-01: Remove src/components/native-player-* directories
-- [ ] 02-02: Remove src/utils/Mpv* and src/core/NativePlayerConfig.ts files
-- [ ] 02-03: Remove src/utils/Anime4KProfiles.ts and related utilities
+- [x] 02-01: Remove src/components/native-player-* directories
+- [x] 02-02: Remove src/utils/Mpv* and src/core/NativePlayerConfig.ts files
+- [x] 02-03: Remove src/utils/Anime4KProfiles.ts and related utilities
 
 ### Phase 3: UI Cleanup
 **Goal**: Remove native player subpage from Plus Page UI
 **Depends on**: Phase 2
 **Research**: Unlikely (removing UI components using existing patterns)
 **Plans**: 2 plans
+**Status**: Complete
 
 Plans:
-- [ ] 03-01: Remove native player subpage from plus-page.html
-- [ ] 03-02: Remove native player logic from plusPage.ts
+- [x] 03-01: Remove native player subpage from plus-page.html
+- [x] 03-02: Remove native player logic from plusPage.ts
 
 ### Phase 4: Dependencies & Configuration
 **Goal**: Clean up MPV-related dependencies from package.json
@@ -105,7 +107,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Investigation & Mapping | 2/2 | Complete | 2026-01-14 |
 | 2. Core File Removal | 3/3 | Complete | 2026-01-14 |
-| 3. UI Cleanup | 0/2 | Not started | - |
+| 3. UI Cleanup | 2/2 | Complete | 2026-01-14 |
 | 4. Dependencies & Configuration | 0/1 | Not started | - |
 | 5. Main Process Cleanup | 0/1 | Not started | - |
 | 6. Preload Script Cleanup | 0/1 | Not started | - |
