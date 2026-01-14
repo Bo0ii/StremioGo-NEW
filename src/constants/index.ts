@@ -21,10 +21,10 @@ export const SELECTORS = {
 
     // Enhanced (StreamGo) section - these are stable IDs we control
     ENHANCED_SECTION: '#enhanced',
-    THEMES_CATEGORY: '#enhanced > div:nth-child(2)',       // Our Themes category (first after section title)
-    PLUGINS_CATEGORY: '#enhanced > div:nth-child(3)',      // Our Plugins category
-    TWEAKS_CATEGORY: '#enhanced > div:nth-child(4)',       // Our Tweaks category
-    ABOUT_CATEGORY: '#enhanced > div:nth-child(5)',        // Our About category
+    THEMES_CATEGORY: '#enhanced > div:nth-child(2)',       // Our Themes category (first after section title) - REMOVED
+    PLUGINS_CATEGORY: '#enhanced > div:nth-child(3)',      // Our Plugins category - REMOVED
+    TWEAKS_CATEGORY: '#enhanced > div:nth-child(4)',       // Our Tweaks category - REMOVED
+    ABOUT_CATEGORY: '#enhanced > div:nth-child(2)',        // Our About category (now first after section title)
 
     // Page containers
     ROUTE_CONTAINER: '.route-container:last-child .route-content',  // Active route content
@@ -144,6 +144,7 @@ export const EXTERNAL_PLAYERS = {
     BUILTIN: 'builtin',
     VLC: 'vlc',
     MPCHC: 'mpchc',
+    MPV: 'mpv',
 } as const;
 
 // File extensions for mods
@@ -188,9 +189,9 @@ export const MACOS_FFPROBE_URLS = {
 
 // Discord RPC
 export const DISCORD = {
-    CLIENT_ID: '1200186750727893164',
+    CLIENT_ID: '1460972016453812365',
     RECONNECT_INTERVAL: 10000,
-    DEFAULT_IMAGE: '1024stremio',
+    DEFAULT_IMAGE: 'streamgo', // Custom StreamGo icon - must be uploaded to Discord Developer Portal
 } as const;
 
 // Timeouts

@@ -60,3 +60,13 @@ stremio-service/*.dmg
 stremio-service/*.flatpak
 stremio-service/deb-extracttmpclaude-*-cwd
 .planning/agent-history.json
+
+# Server deployment folder (local development only)
+server/
+
+# Native player work-in-progress
+native/
+native-player/
+
+# Experimental implementations
+stremio-community-v5-webview-windows/

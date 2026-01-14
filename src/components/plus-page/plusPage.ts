@@ -431,11 +431,17 @@ async function loadThemesList(): Promise<void> {
 			const isApplied = currentTheme === theme;
 			const isLocked = theme === 'liquid-glass.theme.css';
 
+			// Determine if theme is enhanced by Bo0ii (similar logic to theme-item.ts)
+			let enhancedByText = '';
+			if (theme === 'liquid-glass.theme.css' || metaData.author?.includes('Fxy') || metaData.author?.includes('MOERA1') || metaData.author?.includes('Moerat')) {
+				enhancedByText = '<span style="font-size: 11px; color: rgba(255,255,255,0.4); margin-left: 6px;">• Enhanced by Bo0ii</span>';
+			}
+
 			html += `
 				<div class="plus-mod-item" data-mod-name="${metaData.name}" data-mod-description="${metaData.description || ''}">
 					<div class="plus-mod-info">
 						<div class="plus-mod-name">${metaData.name}${isLocked ? ' <span style="color: #f5bf42; font-size: 11px;">(Locked)</span>' : ''}</div>
-						<div class="plus-mod-meta">v${metaData.version || '1.0'} by ${metaData.author || 'Unknown'}</div>
+						<div class="plus-mod-meta">v${metaData.version || '1.0'} by ${metaData.author || 'Unknown'}${enhancedByText}</div>
 						<div class="plus-mod-description">${metaData.description || 'No description'}</div>
 					</div>
 					<button class="plus-btn ${isApplied ? 'plus-btn-primary' : ''}"
@@ -557,7 +563,19 @@ async function loadPluginsList(): Promise<void> {
 			enabledPlugins = [];
 		}
 
-		let html = '';
+		// Categorize plugins
+		interface PluginData {
+			fileName: string;
+			metaData: {
+				name: string;
+				description: string;
+				author: string;
+				version: string;
+			};
+		}
+
+		const bo0iiPlugins: PluginData[] = [];
+		const communityPlugins: PluginData[] = [];
 
 		for (const plugin of allPlugins) {
 			const userPath = join(properties.pluginsPath, plugin);
@@ -567,31 +585,125 @@ async function loadPluginsList(): Promise<void> {
 			const metaData = Helpers.extractMetadataFromFile(pluginPath);
 			if (!metaData || !metaData.name) continue;
 
-			const isEnabled = enabledPlugins.includes(plugin);
+			const pluginData: PluginData = {
+				fileName: plugin,
+				metaData: {
+					name: metaData.name,
+					description: metaData.description || '',
+					author: metaData.author || 'Unknown',
+					version: metaData.version || '1.0'
+				}
+			};
+
+			// Categorize: Bo0ii's plugins vs everyone else (Community)
+			const authorLower = metaData.author?.toLowerCase() || '';
+			if (authorLower === 'bo0ii') {
+				bo0iiPlugins.push(pluginData);
+			} else {
+				communityPlugins.push(pluginData);
+			}
+		}
+
+		// Build HTML with categorized sections
+		let html = '';
+
+		// Bo0ii Exclusive section
+		if (bo0iiPlugins.length > 0) {
+			const bo0iiCollapsed = localStorage.getItem('plus-plugin-group-bo0ii') === 'collapsed';
+			html += `
+				<div class="plus-plugin-group ${bo0iiCollapsed ? 'collapsed' : ''}">
+					<div class="plus-plugin-group-header" data-group="bo0ii">
+						<div class="plus-plugin-group-title">
+							<span class="plus-plugin-group-name">Bo0ii Exclusive</span>
+							<span class="plus-plugin-group-subtitle">Exclusive plugins by Bo0ii</span>
+						</div>
+						<svg class="plus-plugin-group-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<polyline points="6 9 12 15 18 9"></polyline>
+						</svg>
+					</div>
+					<div class="plus-plugin-group-content">
+			`;
+
+			bo0iiPlugins.forEach(plugin => {
+				const isEnabled = enabledPlugins.includes(plugin.fileName);
+				html += `
+					<div class="plus-mod-item" data-mod-name="${plugin.metaData.name}" data-mod-description="${plugin.metaData.description}" data-plugin-file="${plugin.fileName}">
+						<div class="plus-mod-info">
+							<div class="plus-mod-name">${plugin.metaData.name}</div>
+							<div class="plus-mod-meta">v${plugin.metaData.version} by ${plugin.metaData.author}</div>
+							<div class="plus-mod-description">${plugin.metaData.description || 'No description'}</div>
+						</div>
+						<div class="plus-mod-controls">
+							<div tabindex="-1" class="toggle-container-lZfHP button-container-zVLH6 ${isEnabled ? CLASSES.CHECKED : ''}"
+								 data-plugin-toggle="${plugin.fileName}" style="outline: none; flex-shrink: 0;">
+								<div class="toggle-toOWM"></div>
+							</div>
+						</div>
+					</div>
+				`;
+			});
 
 			html += `
-				<div class="plus-mod-item" data-mod-name="${metaData.name}" data-mod-description="${metaData.description || ''}" data-plugin-file="${plugin}">
-					<div class="plus-mod-info">
-						<div class="plus-mod-name">${metaData.name}</div>
-						<div class="plus-mod-meta">v${metaData.version || '1.0'} by ${metaData.author || 'Unknown'}</div>
-						<div class="plus-mod-description">${metaData.description || 'No description'}</div>
-					</div>
-					<div class="plus-mod-controls">
-						<div tabindex="-1" class="toggle-container-lZfHP button-container-zVLH6 ${isEnabled ? CLASSES.CHECKED : ''}"
-							 data-plugin-toggle="${plugin}" style="outline: none; flex-shrink: 0;">
-							<div class="toggle-toOWM"></div>
-						</div>
 					</div>
 				</div>
 			`;
 		}
 
-		container.innerHTML = html || '<div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">No plugins found</div>';
+		// Community section
+		if (communityPlugins.length > 0) {
+			const communityCollapsed = localStorage.getItem('plus-plugin-group-community') === 'collapsed';
+			html += `
+				<div class="plus-plugin-group ${communityCollapsed ? 'collapsed' : ''}">
+					<div class="plus-plugin-group-header" data-group="community">
+						<div class="plus-plugin-group-title">
+							<span class="plus-plugin-group-name">Community</span>
+							<span class="plus-plugin-group-subtitle">Plugins by the community</span>
+						</div>
+						<svg class="plus-plugin-group-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<polyline points="6 9 12 15 18 9"></polyline>
+						</svg>
+					</div>
+					<div class="plus-plugin-group-content">
+			`;
+
+			communityPlugins.forEach(plugin => {
+				const isEnabled = enabledPlugins.includes(plugin.fileName);
+				html += `
+					<div class="plus-mod-item" data-mod-name="${plugin.metaData.name}" data-mod-description="${plugin.metaData.description}" data-plugin-file="${plugin.fileName}">
+						<div class="plus-mod-info">
+							<div class="plus-mod-name">${plugin.metaData.name}</div>
+							<div class="plus-mod-meta">v${plugin.metaData.version} by ${plugin.metaData.author}</div>
+							<div class="plus-mod-description">${plugin.metaData.description || 'No description'}</div>
+						</div>
+						<div class="plus-mod-controls">
+							<div tabindex="-1" class="toggle-container-lZfHP button-container-zVLH6 ${isEnabled ? CLASSES.CHECKED : ''}"
+								 data-plugin-toggle="${plugin.fileName}" style="outline: none; flex-shrink: 0;">
+								<div class="toggle-toOWM"></div>
+							</div>
+						</div>
+					</div>
+				`;
+			});
+
+			html += `
+					</div>
+				</div>
+			`;
+		}
+
+		if (html === '') {
+			html = '<div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">No plugins found</div>';
+		}
+
+		container.innerHTML = html;
 
 		// Setup plugin toggle handlers
 		setupPluginToggles();
 
-		logger.info(`[Plus] Loaded ${allPlugins.length} plugins`);
+		// Setup collapsible group handlers
+		setupPluginGroupHandlers();
+
+		logger.info(`[Plus] Loaded ${allPlugins.length} plugins (${bo0iiPlugins.length} Bo0ii Exclusive, ${communityPlugins.length} Community)`);
 	} catch (err) {
 		container.innerHTML = '<div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">Error loading plugins</div>';
 		logger.error(`[Plus] Error loading plugins: ${err}`);
@@ -681,6 +793,42 @@ function filterMods(type: string, query: string): void {
 		const description = item.getAttribute('data-mod-description')?.toLowerCase() || '';
 		const matches = name.includes(lowerQuery) || description.includes(lowerQuery);
 		(item as HTMLElement).style.display = matches ? '' : 'none';
+	});
+
+	// For plugins, also show/hide groups based on whether they have visible items
+	if (type === 'plugins') {
+		const groups = container.querySelectorAll('.plus-plugin-group');
+		groups.forEach(group => {
+			const groupContent = group.querySelector('.plus-plugin-group-content');
+			if (!groupContent) return;
+			
+			const visibleItems = groupContent.querySelectorAll('[data-mod-name][style*="display: none"]');
+			const totalItems = groupContent.querySelectorAll('[data-mod-name]');
+			
+			// Show group if it has visible items or if search is empty
+			if (lowerQuery === '' || visibleItems.length < totalItems.length) {
+				(group as HTMLElement).style.display = '';
+			} else {
+				(group as HTMLElement).style.display = 'none';
+			}
+		});
+	}
+}
+
+function setupPluginGroupHandlers(): void {
+	const headers = document.querySelectorAll('.plus-plugin-group-header');
+	headers.forEach(header => {
+		header.addEventListener('click', () => {
+			const group = header.closest('.plus-plugin-group');
+			if (!group) return;
+
+			group.classList.toggle('collapsed');
+			const groupId = header.getAttribute('data-group');
+			if (groupId) {
+				const isCollapsed = group.classList.contains('collapsed');
+				localStorage.setItem(`plus-plugin-group-${groupId}`, isCollapsed ? 'collapsed' : 'expanded');
+			}
+		});
 	});
 }
 

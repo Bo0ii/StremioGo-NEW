@@ -49,25 +49,41 @@ function getTemplate(contentInfo: { id: string; type: string; name: string }): s
  * Show specific view
  */
 function showView(viewName: 'initial' | 'room' | 'loading'): void {
-	if (!initialView || !roomView || !loadingView) return;
+	// Re-fetch elements to ensure they exist
+	initialView = document.getElementById('party-initial-view');
+	roomView = document.getElementById('party-room-view');
+	loadingView = document.getElementById('party-loading-view');
 
-	// Hide all views
+	if (!initialView || !roomView || !loadingView) {
+		logger.warn('[PartyPopover] View elements not found');
+		return;
+	}
+
+	// Hide all views with !important style to ensure they're hidden
 	initialView.classList.add('party-view-hidden');
+	initialView.style.display = 'none';
 	roomView.classList.add('party-view-hidden');
+	roomView.style.display = 'none';
 	loadingView.classList.add('party-view-hidden');
+	loadingView.style.display = 'none';
 
 	// Show selected view
 	switch (viewName) {
 		case 'initial':
 			initialView.classList.remove('party-view-hidden');
+			initialView.style.display = 'flex';
 			break;
 		case 'room':
 			roomView.classList.remove('party-view-hidden');
+			roomView.style.display = 'flex';
 			break;
 		case 'loading':
 			loadingView.classList.remove('party-view-hidden');
+			loadingView.style.display = 'flex';
 			break;
 	}
+
+	logger.info(`[PartyPopover] Switched to ${viewName} view`);
 }
 
 /**

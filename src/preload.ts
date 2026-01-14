@@ -10,12 +10,11 @@ import DiscordPresence from "./utils/DiscordPresence";
 import { getModsTabTemplate } from "./components/mods-tab/modsTab";
 import { getModItemTemplate } from "./components/mods-item/modsItem";
 import { getAboutCategoryTemplate } from "./components/about-category/aboutCategory";
-import { applyUserAppearance, writeAppearance, setupAppearanceControls } from "./components/appearance-category/appearanceCategory";
-import { getTweaksIcon, writeTweaks, setupTweaksControls, applyTweaks, initPerformanceMode } from "./components/tweaks-category/tweaksCategory";
-import { handlePlusRoute, injectPlusNavButton, injectSettingsPlusBanner, resetPlusButtonInjection } from "./components/plus-page/plusPage";
+import { applyUserAppearance } from "./components/appearance-category/appearanceCategory";
+import { applyTweaks, initPerformanceMode } from "./components/tweaks-category/tweaksCategory";
+import { handlePlusRoute, injectPlusNavButton, resetPlusButtonInjection } from "./components/plus-page/plusPage";
 import { injectPartyButton, handlePartyRoute, resetPartyButtonInjection, initPartySystem } from "./components/party-button/partyButton";
 import partyService from "./utils/PartyService";
-import { writeStreamingPerformance, setupStreamingPerformanceControls } from "./components/streaming-performance/streamingPerformance";
 // NOTE: Theme UI removed - liquid-glass is locked
 // import { getDefaultThemeTemplate } from "./components/default-theme/defaultTheme";
 import { getBackButton } from "./components/back-btn/backBtn";
@@ -654,140 +653,23 @@ window.addEventListener("load", async () => {
 
         // Only create sections if they don't exist yet
         if (!sectionsAlreadyExist) {
-            // Get plugins asynchronously (non-blocking)
-            const modLists = await getModListsAsync();
-            const themesList = modLists.themes;
-            const pluginsList = modLists.plugins;
-
-            logger.info("Adding 'Plus' sections...");
+            logger.info("Adding 'Plus' section...");
             Settings.addSection("enhanced", "Plus");
-            Settings.addCategory("Themes", "enhanced", getThemeIcon());
-            Settings.addCategory("Plugins", "enhanced", getPluginIcon());
-            Settings.addCategory("Tweaks", "enhanced", getTweaksIcon());
             Settings.addCategory("About", "enhanced", getAboutIcon());
 
-            Settings.addButton("Open Themes Folder", "openthemesfolderBtn", SELECTORS.THEMES_CATEGORY);
-            Settings.addButton("Open Plugins Folder", "openpluginsfolderBtn", SELECTORS.PLUGINS_CATEGORY);
-
             writeAbout();
-            writeAppearance();
-            writeTweaks();
-            writeStreamingPerformance();
-
-            // Add themes to settings (liquid-glass is locked and can't be removed)
-            const LOCKED_THEME = "liquid-glass.theme.css";
-            themesList.forEach(theme => {
-                // Check user path first, then bundled path
-                const userPath = join(properties.themesPath, theme);
-                const bundledPath = join(properties.bundledThemesPath, theme);
-                const themePath = existsSync(userPath) ? userPath : bundledPath;
-
-                const metaData = Helpers.extractMetadataFromFile(themePath);
-                if (metaData && metaData.name && metaData.description && metaData.author && metaData.version) {
-                    // Add locked flag for the glass theme
-                    const isLocked = theme === LOCKED_THEME;
-                    Settings.addItem("theme", theme, {
-                        name: metaData.name,
-                        description: metaData.description,
-                        author: metaData.author,
-                        version: metaData.version,
-                        updateUrl: metaData.updateUrl,
-                        locked: isLocked
-                    });
-                }
-            });
-
-            // Add plugins to settings grouped by author
-            interface PluginData {
-                fileName: string;
-                metaData: {
-                    name: string;
-                    description: string;
-                    author: string;
-                    version: string;
-                    updateUrl?: string;
-                    source?: string;
-                };
-            }
-
-            // Group plugins by author category (Bo0ii vs Revenge977/others)
-            const bo0iiPlugins: PluginData[] = [];
-            const revenge977Plugins: PluginData[] = [];
-
-            pluginsList.forEach(plugin => {
-                // Check user path first, then bundled path
-                const userPath = join(properties.pluginsPath, plugin);
-                const bundledPath = join(properties.bundledPluginsPath, plugin);
-                const pluginPath = existsSync(userPath) ? userPath : bundledPath;
-
-                const metaData = Helpers.extractMetadataFromFile(pluginPath);
-                if (metaData && metaData.name && metaData.description && metaData.author && metaData.version) {
-                    const pluginData: PluginData = {
-                        fileName: plugin,
-                        metaData: {
-                            name: metaData.name,
-                            description: metaData.description,
-                            author: metaData.author,
-                            version: metaData.version,
-                            updateUrl: metaData.updateUrl,
-                            source: metaData.source
-                        }
-                    };
-
-                    // Categorize: Bo0ii's plugins vs everyone else (Revenge977's category)
-                    const authorLower = metaData.author.toLowerCase();
-                    if (authorLower === 'bo0ii') {
-                        bo0iiPlugins.push(pluginData);
-                    } else {
-                        revenge977Plugins.push(pluginData);
-                    }
-                }
-            });
-
-            // Create plugin category sections
-            Helpers.waitForElm(SELECTORS.PLUGINS_CATEGORY).then(() => {
-                const pluginsCategory = document.querySelector(SELECTORS.PLUGINS_CATEGORY);
-                if (!pluginsCategory) return;
-
-                // Create Bo0ii (Exclusive) section
-                if (bo0iiPlugins.length > 0) {
-                    const bo0iiSection = createPluginGroupSection('Bo0ii (Exclusive)', 'Exclusive plugins by Bo0ii', 'bo0ii-plugins');
-                    pluginsCategory.appendChild(bo0iiSection);
-                    bo0iiPlugins.forEach(plugin => {
-                        Settings.addPluginToGroup(plugin.fileName, plugin.metaData, 'bo0ii-plugins');
-                    });
-                }
-
-                // Create Revenge977 section (includes all non-Bo0ii plugins)
-                if (revenge977Plugins.length > 0) {
-                    const revenge977Section = createPluginGroupSection('Revenge 9.7.7 and Community', 'Plugins by Revenge 9.7.7 and Community', 'revenge977-plugins');
-                    pluginsCategory.appendChild(revenge977Section);
-                    revenge977Plugins.forEach(plugin => {
-                        Settings.addPluginToGroup(plugin.fileName, plugin.metaData, 'revenge977-plugins');
-                    });
-                }
-
-                // Setup collapsible handlers for plugin groups (called here for initial setup)
-                setupPluginGroupHandlers();
-            }).catch(err => logger.error("Failed to setup plugins: " + err));
         }
 
         // ALWAYS inject styles and setup handlers on every settings visit
         // These functions are idempotent (check for existing styles/handlers internally)
         // This ensures handlers are re-attached when DOM is recreated after navigation
-        injectCollapsibleStyles();
         injectAboutSectionStyles();
-        injectPluginGroupStyles();
-
-        // Inject banner pointing to the new Plus page
-        injectSettingsPlusBanner();
 
         // Setup collapsible handlers - ALWAYS called to re-attach handlers after navigation
         // The handler functions check for data-*-handler attributes to avoid duplicates
         setupCollapsibleHandlers();
-        setupPluginGroupHandlers();
 
-        // Browse plugins/themes from StreamGo registry
+        // Browse plugins/themes from StreamGo registry (Community Marketplace)
         setupBrowseModsButton();
 
         // Check for updates button
@@ -802,15 +684,6 @@ window.addEventListener("load", async () => {
         // Enable transparency toggle
         setupTransparencyToggle();
 
-        // Appearance customization controls
-        setupAppearanceControls();
-
-        // Tweaks controls (includes player settings)
-        setupTweaksControls();
-
-        // Streaming performance controls
-        setupStreamingPerformanceControls();
-
         // Inject external player options into Stremio's native Player settings
         injectExternalPlayerOptions();
 
@@ -820,8 +693,6 @@ window.addEventListener("load", async () => {
         // ModManager listeners - safe to call multiple times
         ModManager.togglePluginListener();
         ModManager.scrollListener();
-        ModManager.openThemesFolder();
-        ModManager.openPluginsFolder();
     });
 });
 
@@ -2172,7 +2043,12 @@ function injectExternalPlayerOptions(): void {
 
             for (const menu of menus) {
                 const container = menu as HTMLElement;
-                if (container.dataset.enhanced === 'true') continue;
+                
+                // Check if container is visible (not hidden by display:none or visibility:hidden)
+                const style = window.getComputedStyle(container);
+                if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+                    continue;
+                }
 
                 // Find all clickable menu items - try various patterns
                 let existingItems = container.querySelectorAll('div[class*="option"]');
@@ -2198,7 +2074,23 @@ function injectExternalPlayerOptions(): void {
                 });
 
                 if (!isExternalPlayerMenu || !templateItem) continue;
-                if (container.querySelector('[data-enhanced-option="vlc"]')) continue;
+                
+                // Check if VLC/MPC-HC options already exist in THIS container (not globally)
+                // Only skip if they exist in the current visible container
+                const existingVlc = container.querySelector('[data-enhanced-option="vlc"]');
+                const existingMpchc = container.querySelector('[data-enhanced-option="mpchc"]');
+                if (existingVlc && existingMpchc) {
+                    // Options already exist, but ensure they're properly set up and visible
+                    // Also update selected state based on current selection
+                    updateSelectedState(container, existingItems);
+                    continue;
+                }
+
+                // Remove any old injected options from this container first (cleanup)
+                const oldVlc = container.querySelector('[data-enhanced-option="vlc"]');
+                const oldMpchc = container.querySelector('[data-enhanced-option="mpchc"]');
+                if (oldVlc) oldVlc.remove();
+                if (oldMpchc) oldMpchc.remove();
 
                 // TypeScript needs this after the null check
                 const itemTemplate: HTMLElement = templateItem;
@@ -2235,9 +2127,16 @@ function injectExternalPlayerOptions(): void {
                 mpchcOption.className = mpchcOption.className.replace(/selected[^\s]*/gi, '').replace(/checked[^\s]*/gi, '');
                 setOptionText(mpchcOption, 'MPC-HC');
 
+                // Create MPV option
+                const mpvOption = itemTemplate.cloneNode(true) as HTMLElement;
+                mpvOption.dataset.enhancedOption = 'mpv';
+                mpvOption.className = mpvOption.className.replace(/selected[^\s]*/gi, '').replace(/checked[^\s]*/gi, '');
+                setOptionText(mpvOption, 'MPV');
+
                 // Style options to be visually consistent
                 vlcOption.style.cursor = 'pointer';
                 mpchcOption.style.cursor = 'pointer';
+                mpvOption.style.cursor = 'pointer';
 
                 // Add click handlers
                 const handlePlayerSelect = async (player: string, displayName: string, e: Event) => {
@@ -2257,15 +2156,18 @@ function injectExternalPlayerOptions(): void {
                 // Add click handlers with cleanup registration
                 const vlcClickHandler = (e: Event) => handlePlayerSelect('vlc', 'VLC', e);
                 const mpchcClickHandler = (e: Event) => handlePlayerSelect('mpchc', 'MPC-HC', e);
+                const mpvClickHandler = (e: Event) => handlePlayerSelect('mpv', 'MPV', e);
                 vlcOption.addEventListener('click', vlcClickHandler);
                 mpchcOption.addEventListener('click', mpchcClickHandler);
+                mpvOption.addEventListener('click', mpvClickHandler);
                 registerEventCleanup('external-player-menu', () => {
                     vlcOption.removeEventListener('click', vlcClickHandler);
                     mpchcOption.removeEventListener('click', mpchcClickHandler);
+                    mpvOption.removeEventListener('click', mpvClickHandler);
                 });
 
                 // Add hover effect with cleanup registration
-                [vlcOption, mpchcOption].forEach(opt => {
+                [vlcOption, mpchcOption, mpvOption].forEach(opt => {
                     const enterHandler = () => { opt.style.backgroundColor = 'rgba(255,255,255,0.1)'; };
                     const leaveHandler = () => { opt.style.backgroundColor = ''; };
                     opt.addEventListener('mouseenter', enterHandler);
@@ -2280,17 +2182,22 @@ function injectExternalPlayerOptions(): void {
                 const itemsParent = itemTemplate.parentElement || container;
                 itemsParent.appendChild(vlcOption);
                 itemsParent.appendChild(mpchcOption);
+                itemsParent.appendChild(mpvOption);
 
                 // Also track when native options are clicked with cleanup
                 existingItems.forEach(item => {
                     const clickHandler = () => {
                         const text = (item.textContent || '').toLowerCase().trim();
+                        let displayName = text;
                         if (text === 'disabled') {
                             localStorage.setItem(STORAGE_KEYS.EXTERNAL_PLAYER, EXTERNAL_PLAYERS.BUILTIN);
+                            displayName = 'Disabled';
                         } else if (text.includes('m3u')) {
                             localStorage.setItem(STORAGE_KEYS.EXTERNAL_PLAYER, 'm3u');
+                            displayName = 'M3U';
                         }
                         logger.info(`External player set to: ${text}`);
+                        updateButtonText(displayName);
                         updatePlayerPathDisplay();
                     };
                     item.addEventListener('click', clickHandler);
@@ -2299,11 +2206,79 @@ function injectExternalPlayerOptions(): void {
                     });
                 });
 
-                logger.info("VLC and MPC-HC options injected successfully");
+                // Ensure all menu items are visible (Stremio might hide some)
+                existingItems.forEach(item => {
+                    const el = item as HTMLElement;
+                    const itemStyle = window.getComputedStyle(el);
+                    if (itemStyle.display === 'none') {
+                        el.style.display = '';
+                    }
+                    if (itemStyle.visibility === 'hidden') {
+                        el.style.visibility = 'visible';
+                    }
+                    if (itemStyle.opacity === '0') {
+                        el.style.opacity = '1';
+                    }
+                });
+
+                // Update selected state after injection
+                updateSelectedState(container, existingItems);
+
+                logger.info("VLC, MPC-HC, and MPV options injected successfully");
                 return true;
             }
         }
         return false;
+    };
+
+    // Helper function to update selected state in the menu
+    const updateSelectedState = (container: HTMLElement, existingItems: NodeListOf<Element>) => {
+        const currentPlayer = localStorage.getItem(STORAGE_KEYS.EXTERNAL_PLAYER) || EXTERNAL_PLAYERS.BUILTIN;
+        
+        // Clear all selected states first
+        const allItems = container.querySelectorAll('div[class*="option"], div[class*="menu-item"], div[class*="item"]');
+        allItems.forEach(item => {
+            const el = item as HTMLElement;
+            el.className = el.className.replace(/selected[^\s]*/gi, '').replace(/checked[^\s]*/gi, '');
+        });
+
+        // Set selected state based on current player
+        let targetItem: HTMLElement | null = null;
+        
+        if (currentPlayer === 'vlc') {
+            targetItem = container.querySelector('[data-enhanced-option="vlc"]') as HTMLElement;
+        } else if (currentPlayer === 'mpchc') {
+            targetItem = container.querySelector('[data-enhanced-option="mpchc"]') as HTMLElement;
+        } else if (currentPlayer === 'm3u' || currentPlayer === EXTERNAL_PLAYERS.BUILTIN) {
+            // Find the matching native option
+            existingItems.forEach(item => {
+                const text = (item.textContent || '').toLowerCase().trim();
+                if ((currentPlayer === 'm3u' && text.includes('m3u')) ||
+                    (currentPlayer === EXTERNAL_PLAYERS.BUILTIN && text === 'disabled')) {
+                    targetItem = item as HTMLElement;
+                }
+            });
+        }
+
+        // Apply selected state
+        if (targetItem) {
+            // Try to add selected/checked class (Stremio might use various class names)
+            const hasSelected = targetItem.className.match(/selected|checked/i);
+            if (!hasSelected) {
+                // Try common patterns
+                const classes = targetItem.className.split(/\s+/);
+                for (const cls of classes) {
+                    if (cls.includes('option') || cls.includes('item')) {
+                        // Try to find a selected variant
+                        const selectedClass = cls.replace(/(option|item)/i, '$1-selected') || 
+                                             cls.replace(/(option|item)/i, '$1-checked') ||
+                                             cls + '-selected';
+                        targetItem.className += ' ' + selectedClass;
+                        break;
+                    }
+                }
+            }
+        }
     };
 
     const updateButtonText = (text: string) => {
@@ -2316,16 +2291,26 @@ function injectExternalPlayerOptions(): void {
                 const labelDiv = button.querySelector('div[class*="label"]');
                 if (labelDiv) {
                     labelDiv.textContent = text;
+                    logger.info(`[ExternalPlayer] Updated button text to: ${text}`);
                 } else {
                     // Try to find any text-containing element
                     const textContainers = button.querySelectorAll('*');
+                    let updated = false;
                     textContainers.forEach(container => {
                         if (container.children.length === 0 && container.textContent) {
                             container.textContent = text;
+                            updated = true;
                         }
                     });
+                    if (updated) {
+                        logger.info(`[ExternalPlayer] Updated button text to: ${text} (fallback method)`);
+                    }
                 }
+            } else {
+                logger.warn('[ExternalPlayer] Could not find multiselect button');
             }
+        } else {
+            logger.warn('[ExternalPlayer] Could not find option container');
         }
     };
 
@@ -2341,8 +2326,8 @@ function injectExternalPlayerOptions(): void {
         const existingWarning = document.getElementById('enhanced-player-warning');
         if (existingWarning) existingWarning.remove();
 
-        // Only show for VLC or MPC-HC
-        if (externalPlayer !== 'vlc' && externalPlayer !== 'mpchc') return;
+        // Only show for VLC, MPC-HC, or MPV
+        if (externalPlayer !== 'vlc' && externalPlayer !== 'mpchc' && externalPlayer !== 'mpv') return;
 
         // Get detected path
         const detectedPath = await ipcRenderer.invoke(IPC_CHANNELS.DETECT_PLAYER, externalPlayer);
@@ -2374,26 +2359,80 @@ function injectExternalPlayerOptions(): void {
 
     // Use unified observer to watch for dropdown menus appearing anywhere in DOM
     registerObserverHandler('external-player-menu', (mutations) => {
-        // Only process if nodes were added
+        // Process if nodes were added or attributes changed (menu visibility)
         for (const mutation of mutations) {
             if (mutation.addedNodes.length > 0) {
-                injectOptionsIntoMenu();
+                // Small delay to ensure menu is fully rendered
+                setTimeout(() => {
+                    injectOptionsIntoMenu();
+                }, 50);
                 break;
+            }
+            // Also check for attribute changes that might indicate menu visibility
+            if (mutation.type === 'attributes' && 
+                (mutation.attributeName === 'style' || mutation.attributeName === 'class')) {
+                setTimeout(() => {
+                    injectOptionsIntoMenu();
+                }, 50);
             }
         }
     });
 
-    // Update button text and path display on load based on saved setting
-    // Use exponential backoff instead of fixed interval (95% fewer DOM queries)
-    const savedPlayer = localStorage.getItem(STORAGE_KEYS.EXTERNAL_PLAYER);
-    if (savedPlayer === 'vlc' || savedPlayer === 'mpchc') {
-        waitForElementWithBackoff(OPTION_CONTAINER_SELECTOR).then((optionContainer) => {
-            if (optionContainer) {
-                updateButtonText(savedPlayer === 'vlc' ? 'VLC' : 'MPC-HC');
-                updatePlayerPathDisplay();
+    // Also listen for clicks on the external player button to ensure injection
+    const setupButtonClickListener = () => {
+        const optionContainer = document.querySelector(OPTION_CONTAINER_SELECTOR);
+        if (optionContainer) {
+            const button = optionContainer.querySelector('div[class*="multiselect-button"]');
+            if (button && !button.hasAttribute('data-click-listener-attached')) {
+                button.setAttribute('data-click-listener-attached', 'true');
+                button.addEventListener('click', () => {
+                    // Small delay to let the menu appear
+                    setTimeout(() => {
+                        injectOptionsIntoMenu();
+                    }, 100);
+                });
             }
+        }
+    };
+
+    // Set up button click listener when settings page loads
+    if (location.href.includes('#/settings')) {
+        waitForElementWithBackoff(OPTION_CONTAINER_SELECTOR).then(() => {
+            setupButtonClickListener();
         });
     }
+
+    // Update button text and path display on load based on saved setting
+    // Use exponential backoff instead of fixed interval (95% fewer DOM queries)
+    const savedPlayer = localStorage.getItem(STORAGE_KEYS.EXTERNAL_PLAYER) || EXTERNAL_PLAYERS.BUILTIN;
+    waitForElementWithBackoff(OPTION_CONTAINER_SELECTOR).then((optionContainer) => {
+        if (optionContainer) {
+            let displayName = 'Disabled';
+            if (savedPlayer === 'vlc') {
+                displayName = 'VLC';
+            } else if (savedPlayer === 'mpchc') {
+                displayName = 'MPC-HC';
+            } else if (savedPlayer === 'mpv') {
+                displayName = 'MPV';
+            } else if (savedPlayer === 'm3u') {
+                displayName = 'M3U';
+            }
+
+            // Retry mechanism to handle race conditions with Stremio's initialization
+            // Try multiple times with delays to ensure our update persists
+            const retryUpdate = (attempts: number = 0) => {
+                updateButtonText(displayName);
+                if (attempts < 3) {
+                    setTimeout(() => retryUpdate(attempts + 1), 200);
+                }
+            };
+            retryUpdate();
+
+            if (savedPlayer === 'vlc' || savedPlayer === 'mpchc' || savedPlayer === 'mpv') {
+                updatePlayerPathDisplay();
+            }
+        }
+    });
 
     // Cleanup on navigation away from settings
     const cleanup = () => {
@@ -2403,6 +2442,39 @@ function injectExternalPlayerOptions(): void {
             window.removeEventListener('hashchange', cleanup);
             // Reset the initialization flag so it can be set up again when returning to settings
             externalPlayerOptionsInitialized = false;
+        } else {
+            // Re-setup button click listener and restore button text when returning to settings
+            waitForElementWithBackoff(OPTION_CONTAINER_SELECTOR).then((optionContainer) => {
+                setupButtonClickListener();
+
+                // Restore button text from saved setting
+                if (optionContainer) {
+                    const currentPlayer = localStorage.getItem(STORAGE_KEYS.EXTERNAL_PLAYER) || EXTERNAL_PLAYERS.BUILTIN;
+                    let displayName = 'Disabled';
+                    if (currentPlayer === 'vlc') {
+                        displayName = 'VLC';
+                    } else if (currentPlayer === 'mpchc') {
+                        displayName = 'MPC-HC';
+                    } else if (currentPlayer === 'mpv') {
+                        displayName = 'MPV';
+                    } else if (currentPlayer === 'm3u') {
+                        displayName = 'M3U';
+                    }
+
+                    // Retry mechanism to handle race conditions with Stremio's initialization
+                    const retryUpdate = (attempts: number = 0) => {
+                        updateButtonText(displayName);
+                        if (attempts < 3) {
+                            setTimeout(() => retryUpdate(attempts + 1), 200);
+                        }
+                    };
+                    retryUpdate();
+
+                    if (currentPlayer === 'vlc' || currentPlayer === 'mpchc' || currentPlayer === 'mpv') {
+                        updatePlayerPathDisplay();
+                    }
+                }
+            });
         }
     };
     window.addEventListener('hashchange', cleanup);
@@ -2482,8 +2554,8 @@ async function handleExternalPlayerInterception(): Promise<void> {
         return;
     }
 
-    // Only handle VLC and MPC-HC
-    if (externalPlayer !== 'vlc' && externalPlayer !== 'mpchc') {
+    // Only handle VLC, MPC-HC, and MPV
+    if (externalPlayer !== 'vlc' && externalPlayer !== 'mpchc' && externalPlayer !== 'mpv') {
         logger.info(`[ExternalPlayer] Skipping - unknown player type: ${externalPlayer}`);
         document.body.classList.remove('external-player-active');
         return;
@@ -2766,16 +2838,6 @@ async function handleExternalPlayerInterception(): Promise<void> {
 }
 
 // Icon SVGs
-
-function getThemeIcon(): string {
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="icon">
-        <path d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10c1.38 0 2.5-1.12 2.5-2.5 0-.61-.23-1.2-.64-1.67-.08-.1-.13-.21-.13-.33 0-.28.22-.5.5-.5H16c3.31 0 6-2.69 6-6 0-4.96-4.49-9-10-9zM5.5 12c-.83 0-1.5-.67-1.5-1.5S4.67 9 5.5 9 7 9.67 7 10.5 6.33 12 5.5 12zm3-4C7.67 8 7 7.33 7 6.5S7.67 5 8.5 5s1.5.67 1.5 1.5S9.33 8 8.5 8zm7 0c-.83 0-1.5-.67-1.5-1.5S14.67 5 15.5 5s1.5.67 1.5 1.5S16.33 8 15.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S17.67 9 18.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" fill="currentcolor"></path></svg>`;
-}
-
-function getPluginIcon(): string {
-    return `<svg icon="addons-outline" class="icon" viewBox="0 0 512 512" style="fill: currentcolor;">
-        <path d="M413.7 246.1H386c-0.53-0.01-1.03-0.23-1.4-0.6-0.37-0.37-0.59-0.87-0.6-1.4v-77.2a38.94 38.94 0 0 0-11.4-27.5 38.94 38.94 0 0 0-27.5-11.4h-77.2c-0.53-0.01-1.03-0.23-1.4-0.6-0.37-0.37-0.59-0.87-0.6-1.4v-27.7c0-27.1-21.5-49.9-48.6-50.3-6.57-0.1-13.09 1.09-19.2 3.5a49.616 49.616 0 0 0-16.4 10.7 49.823 49.823 0 0 0-11 16.2 48.894 48.894 0 0 0-3.9 19.2v28.5c-0.01 0.53-0.23 1.03-0.6 1.4-0.37 0.37-0.87 0.59-1.4 0.6h-77.2c-10.5 0-20.57 4.17-28 11.6a39.594 39.594 0 0 0-11.6 28v70.4c0.01 0.53 0.23 1.03 0.6 1.4 0.37 0.37 0.87 0.59 1.4 0.6h26.9c29.4 0 53.7 25.5 54.1 54.8 0.4 29.9-23.5 57.2-53.3 57.2H50c-0.53 0.01-1.03 0.23-1.4 0.6-0.37 0.37-0.59 0.87-0.6 1.4v70.4c0 10.5 4.17 20.57 11.6 28s17.5 11.6 28 11.6h70.4c0.53-0.01 1.03-0.23 1.4-0.6 0.37-0.37 0.59-0.87 0.6-1.4V441.2c0-30.3 24.8-56.4 55-57.1 30.1-0.7 57 20.3 57 50.3v27.7c0.01 0.53 0.23 1.03 0.6 1.4 0.37 0.37 0.87 0.59 1.4 0.6h71.1a38.94 38.94 0 0 0 27.5-11.4 38.958 38.958 0 0 0 11.4-27.5v-78c0.01-0.53 0.23-1.03 0.6-1.4 0.37-0.37 0.87-0.59 1.4-0.6h28.5c27.6 0 49.5-22.7 49.5-50.4s-23.2-48.7-50.3-48.7Z" style="stroke:currentcolor;stroke-linecap:round;stroke-linejoin:round;stroke-width:32;fill: currentColor;"></path></svg>`;
-}
 
 function getAboutIcon(): string {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="icon">
@@ -3497,79 +3559,6 @@ function setupGlobalVideoInterception(): void {
 }
 
 // Inject CSS styles for collapsible sections
-function injectCollapsibleStyles(): void {
-    const existingStyle = document.getElementById('enhanced-collapsible-css');
-    if (existingStyle) return;
-
-    const style = document.createElement('style');
-    style.id = 'enhanced-collapsible-css';
-    style.textContent = `
-        .enhanced-collapsible {
-            margin: 1rem 0;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            overflow: hidden;
-            background: rgba(255, 255, 255, 0.02);
-        }
-
-        .enhanced-collapsible-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 16px;
-            cursor: pointer;
-            background: rgba(255, 255, 255, 0.05);
-            transition: background-color 0.2s ease;
-            user-select: none;
-        }
-
-        .enhanced-collapsible-header:hover {
-            background: rgba(255, 255, 255, 0.08);
-        }
-
-        .enhanced-collapsible-title {
-            font-size: 14px;
-            font-weight: 500;
-            color: white;
-        }
-
-        .enhanced-collapsible-icon {
-            transition: transform 0.3s ease;
-            color: rgba(255, 255, 255, 0.6);
-        }
-
-        .enhanced-collapsible.collapsed .enhanced-collapsible-icon {
-            transform: rotate(-90deg);
-        }
-
-        .enhanced-collapsible-content {
-            padding: 16px;
-            max-height: 2000px;
-            overflow: hidden;
-            transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
-            opacity: 1;
-        }
-
-        .enhanced-collapsible.collapsed .enhanced-collapsible-content {
-            max-height: 0;
-            padding-top: 0;
-            padding-bottom: 0;
-            opacity: 0;
-        }
-
-        /* Style adjustments for nested options */
-        .enhanced-collapsible .option-vFOAS {
-            margin-bottom: 0.5rem;
-        }
-
-        .enhanced-collapsible .option-vFOAS:last-of-type {
-            margin-bottom: 0;
-        }
-    `;
-    document.head.appendChild(style);
-    logger.info("Collapsible section styles injected");
-}
-
 function injectAboutSectionStyles(): void {
     const existingStyle = document.getElementById('enhanced-about-css');
     if (existingStyle) return;
@@ -3687,168 +3676,3 @@ function handlePlayButtonClick(e: MouseEvent): void {
 }
 
 // Create a collapsible plugin group section
-function createPluginGroupSection(title: string, description: string, groupId: string): HTMLElement {
-    const section = document.createElement('div');
-    section.className = 'enhanced-collapsible plugin-group';
-    section.id = groupId;
-
-    section.innerHTML = `
-        <div class="enhanced-collapsible-header" data-section="${groupId}">
-            <div class="enhanced-collapsible-title-container">
-                <span class="enhanced-collapsible-title">${title}</span>
-                <span class="enhanced-collapsible-subtitle">${description}</span>
-            </div>
-            <svg class="enhanced-collapsible-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-        </div>
-        <div class="enhanced-collapsible-content" id="${groupId}-content">
-        </div>
-    `;
-
-    return section;
-}
-
-// Flag to track if delegated handler is already set up
-let pluginGroupDelegatedHandlerSetup = false;
-
-// Setup delegated click handler for plugin group sections
-// Uses event delegation for reliable click handling regardless of when elements are added
-function setupPluginGroupHandlers(): void {
-    // Set up delegated event handler once (handles all current and future plugin group headers)
-    if (!pluginGroupDelegatedHandlerSetup) {
-        document.addEventListener('click', (e: MouseEvent) => {
-            const target = e.target as HTMLElement;
-            if (!target) return;
-
-            // Check if clicked element is within a plugin group header
-            const header = target.closest('.plugin-group .enhanced-collapsible-header');
-            if (!header) return;
-
-            const collapsible = header.closest('.enhanced-collapsible');
-            if (collapsible) {
-                collapsible.classList.toggle('collapsed');
-
-                const section = header.getAttribute('data-section');
-                if (section) {
-                    const isCollapsed = collapsible.classList.contains('collapsed');
-                    localStorage.setItem(`plugin-group-${section}`, isCollapsed ? 'collapsed' : 'expanded');
-                }
-            }
-        });
-        pluginGroupDelegatedHandlerSetup = true;
-        logger.info('Plugin group delegated click handler initialized');
-    }
-
-    // Restore saved states for any plugin group headers currently in DOM
-    setTimeout(() => {
-        const headers = document.querySelectorAll('.plugin-group .enhanced-collapsible-header');
-
-        headers.forEach(header => {
-            // Skip if state already restored for this element
-            if (header.hasAttribute('data-plugin-group-state-restored')) return;
-            header.setAttribute('data-plugin-group-state-restored', 'true');
-
-            // Restore saved state (default to collapsed)
-            const section = header.getAttribute('data-section');
-            if (section) {
-                const savedState = localStorage.getItem(`plugin-group-${section}`);
-                const collapsible = header.closest('.enhanced-collapsible');
-                if (collapsible) {
-                    // Default to collapsed, only expand if explicitly saved as expanded
-                    if (savedState !== 'expanded') {
-                        collapsible.classList.add('collapsed');
-                    }
-                }
-            }
-        });
-
-        logger.info(`Plugin group state restored for ${headers.length} groups`);
-    }, TIMEOUTS.NAVIGATION_DEBOUNCE);
-}
-
-// Inject styles for plugin groups
-function injectPluginGroupStyles(): void {
-    const existingStyle = document.getElementById('enhanced-plugin-group-css');
-    if (existingStyle) return;
-
-    const style = document.createElement('style');
-    style.id = 'enhanced-plugin-group-css';
-    style.textContent = `
-        .plugin-group {
-            margin: 1rem 0;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 10px;
-            overflow: hidden;
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .plugin-group .enhanced-collapsible-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 14px 18px;
-            cursor: pointer;
-            background: rgba(255, 255, 255, 0.06);
-            transition: background-color 0.2s ease;
-            user-select: none;
-        }
-
-        .plugin-group .enhanced-collapsible-header:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .enhanced-collapsible-title-container {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .plugin-group .enhanced-collapsible-title {
-            font-size: 15px;
-            font-weight: 600;
-            color: white;
-        }
-
-        .enhanced-collapsible-subtitle {
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.5);
-            font-weight: 400;
-        }
-
-        .plugin-group .enhanced-collapsible-icon {
-            transition: transform 0.3s ease;
-            color: rgba(255, 255, 255, 0.6);
-            flex-shrink: 0;
-        }
-
-        .plugin-group.collapsed .enhanced-collapsible-icon {
-            transform: rotate(-90deg);
-        }
-
-        .plugin-group .enhanced-collapsible-content {
-            padding: 12px 16px;
-            max-height: 2000px;
-            overflow: hidden;
-            transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
-            opacity: 1;
-        }
-
-        .plugin-group.collapsed .enhanced-collapsible-content {
-            max-height: 0;
-            padding-top: 0;
-            padding-bottom: 0;
-            opacity: 0;
-        }
-
-        .plugin-group .addon-whmdO {
-            margin-bottom: 0.75rem;
-        }
-
-        .plugin-group .addon-whmdO:last-child {
-            margin-bottom: 0;
-        }
-    `;
-    document.head.appendChild(style);
-    logger.info("Plugin group styles injected");
-}

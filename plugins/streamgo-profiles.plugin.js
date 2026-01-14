@@ -635,12 +635,35 @@
 
             await this.loadProfileContentIds();
             this.setupObserver();
+            this.setupNavigationListener();
 
             // Initial filter with small delay to let DOM settle
             setTimeout(() => this.filterContinueWatching(), 500);
 
             this.initialized = true;
             console.log(`[${PLUGIN_NAME}] DOM Filter Manager initialized with ${this.profileContentIds.size} content IDs`);
+        }
+
+        setupNavigationListener() {
+            // Refresh profile content IDs when navigating to home screen
+            // This ensures that if a profile watched content and then navigates back,
+            // the Continue Watching will show the correct items
+            const handleNavigation = () => {
+                const hash = window.location.hash || '';
+                // Check if we're on home screen (no hash or hash is just #/)
+                if (!hash || hash === '#' || hash === '#/' || hash.startsWith('#/home')) {
+                    // Refresh profile content IDs from cache (which should be up-to-date)
+                    // This ensures items watched by current profile are shown
+                    this.loadProfileContentIds(false).then(() => {
+                        // Re-filter after a short delay to let DOM update
+                        setTimeout(() => this.filterContinueWatching(), 300);
+                    });
+                }
+            };
+
+            window.addEventListener('hashchange', handleNavigation);
+            // Also check on initial load
+            handleNavigation();
         }
 
         injectFilterStyles() {
@@ -874,6 +897,30 @@
             const allBoardRows = document.querySelectorAll('[class*="board-row"]');
             console.log(`[${PLUGIN_NAME}] filterContinueWatching: Found ${allBoardRows.length} board rows`);
 
+            // Get current profile's continue watching data from cache (most up-to-date)
+            // This ensures we show items that the current profile has watched, even if multiple profiles watched the same content
+            const currentProfileId = this.profileManager?.getActiveProfileId();
+            let cachedContinueWatching = [];
+            if (currentProfileId && this.dataManager?.syncEngine) {
+                cachedContinueWatching = this.dataManager.syncEngine.getCachedContinueWatching() || [];
+                // Filter to only current profile's items
+                cachedContinueWatching = cachedContinueWatching.filter(item => 
+                    item.profile_id === currentProfileId && !item.deleted_at
+                );
+            }
+            
+            // Build sets from cached data (most current) AND profileContentIds (for fallback)
+            const cachedContentIds = new Set(cachedContinueWatching.map(item => item.content_id));
+            const cachedTitles = new Set(
+                cachedContinueWatching
+                    .filter(item => item.title)
+                    .map(item => item.title.toLowerCase().trim())
+            );
+            
+            // Merge with existing sets (cached data takes precedence as it's more current)
+            const allContentIds = new Set([...this.profileContentIds, ...cachedContentIds]);
+            const allTitles = new Set([...this.profileTitles, ...cachedTitles]);
+
             allBoardRows.forEach(row => {
                 const rowTitle = row.querySelector('[class*="title"]')?.textContent?.toLowerCase() || '';
 
@@ -927,16 +974,31 @@
                     const { contentId, title } = this.extractItemInfo(item);
 
                     // Try to match by content ID first, then by title
+                    // Check both cached data (most current) and profileContentIds set
                     let belongsToProfile = false;
                     let matchType = 'none';
 
-                    if (contentId && this.profileContentIds.has(contentId)) {
-                        belongsToProfile = true;
-                        matchType = 'id';
-                    } else if (title && this.profileTitles.has(title)) {
-                        belongsToProfile = true;
-                        matchType = 'title';
-                        matchedByTitle++;
+                    if (contentId) {
+                        if (cachedContentIds.has(contentId)) {
+                            belongsToProfile = true;
+                            matchType = 'cached-id';
+                        } else if (allContentIds.has(contentId)) {
+                            belongsToProfile = true;
+                            matchType = 'id';
+                        }
+                    }
+                    
+                    if (!belongsToProfile && title) {
+                        const normalizedTitle = title.toLowerCase().trim();
+                        if (cachedTitles.has(normalizedTitle)) {
+                            belongsToProfile = true;
+                            matchType = 'cached-title';
+                            matchedByTitle++;
+                        } else if (allTitles.has(normalizedTitle)) {
+                            belongsToProfile = true;
+                            matchType = 'title';
+                            matchedByTitle++;
+                        }
                     }
 
                     // Only process items we could identify (by ID or title)
@@ -969,7 +1031,7 @@
                 });
 
                 console.log(`[${PLUGIN_NAME}] Processing complete: ${totalItems} items identified, ${visibleCount} visible (${matchedByTitle} matched by title)`);
-                console.log(`[${PLUGIN_NAME}] Profile has ${this.profileContentIds.size} IDs, ${this.profileTitles.size} titles`);
+                console.log(`[${PLUGIN_NAME}] Profile has ${allContentIds.size} IDs (${cachedContentIds.size} from cache, ${this.profileContentIds.size} from set), ${allTitles.size} titles`);
 
                 // If ALL items are hidden (new profile with no data), hide the entire row
                 if (visibleCount === 0 && totalItems > 0) {
