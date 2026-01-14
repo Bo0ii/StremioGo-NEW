@@ -137,7 +137,7 @@
 				}
 			],
 			"requestedExecutionLevel": "asInvoker",
-			"sign": null,
+			"signAndEditExecutable": false,
 			"verifyUpdateCodeSignature": false
 		},
 		"nsis": {
@@ -149,8 +149,7 @@
 			"runAfterFinish": true,
 			"artifactName": "${productName}-${version}-Windows.${ext}",
 			"unicode": true,
-			"differencePackage": false,
-			"warningsAsErrors": false,
+			"differentialPackage": false,
 			"include": "build/installer.nsh"
 		},
 		"compression": "normal",
