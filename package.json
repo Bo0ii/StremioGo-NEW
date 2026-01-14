@@ -148,7 +148,7 @@
 			"perMachine": false,
 			"allowElevation": true,
 			"deleteAppDataOnUninstall": false,
-			"compression": "maximum"
+			"include": "build/installer.nsh"
 		},
 		"mac": {
 			"target": "dmg",
