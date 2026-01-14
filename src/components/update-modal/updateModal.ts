@@ -142,28 +142,22 @@ async function startInstallation(): Promise<void> {
 
     if (!installButton || !ignoreButton || !statusText || !detailsText) return;
 
-    const platform = process.platform;
-
     // Update UI for installing state
     (installButton as HTMLElement).style.opacity = '0.6';
     (installButton as HTMLElement).style.pointerEvents = 'none';
     (ignoreButton as HTMLElement).style.opacity = '0.6';
     (ignoreButton as HTMLElement).style.pointerEvents = 'none';
 
-    if (platform === 'win32') {
-        statusText.textContent = 'Starting installer...';
-        detailsText.textContent = 'The app will close and the installer will run. Please follow the installer instructions.';
-    } else if (platform === 'linux') {
-        statusText.textContent = 'Applying update...';
-        detailsText.textContent = 'The app will close and restart automatically with the new version.';
-    }
+    // All platforms now have automatic installation
+    statusText.textContent = 'Installing update...';
+    detailsText.textContent = 'The app will close and reopen automatically with the new version. Please wait...';
 
     try {
         const result = await ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL_START, installerPath);
         if (!result.success) {
             throw new Error(result.error || 'Installation failed');
         }
-        // Note: For Windows and Linux, the app will quit before we get here
+        // Note: For all platforms, the app will quit before we get here
     } catch (error) {
         onUpdateError('install', (error as Error).message);
     }
@@ -175,6 +169,10 @@ function updateDownloadProgress(progress: number, bytesDownloaded: number, total
     const detailsText = document.getElementById('updateDetailsText');
 
     if (!progressBar || !statusText || !detailsText) return;
+
+    // Reset any error styling
+    detailsText.style.color = '';
+    progressBar.style.background = 'linear-gradient(90deg, #4a90e2, #357abd)';
 
     progressBar.style.width = `${Math.min(progress, 100)}%`;
     statusText.textContent = `Downloading update... ${Math.round(progress)}%`;
@@ -198,21 +196,11 @@ function onDownloadComplete(): void {
 
     progressBar.style.width = '100%';
 
-    // Platform-specific messaging
-    const platform = process.platform;
+    // All platforms now have automatic installation and restart
+    statusText.textContent = 'Download complete! Ready to install.';
+    detailsText.textContent = 'Click Install to automatically apply the update. The app will close and reopen with the new version.';
 
-    if (platform === 'win32') {
-        statusText.textContent = 'Download complete! Ready to install.';
-        detailsText.textContent = 'Click Install to close this app and run the installer. The installer will guide you through the update process.';
-    } else if (platform === 'linux') {
-        statusText.textContent = 'Download complete! Ready to install.';
-        detailsText.textContent = 'Click Install to close this app and apply the update. The app will restart automatically with the new version.';
-    } else if (platform === 'darwin') {
-        statusText.textContent = 'Download complete! Installing update...';
-        detailsText.textContent = 'Please wait while the update is installed...';
-    }
-
-    // Update button to show "Install" (or start auto-install for macOS)
+    // Update button to show "Install"
     const buttonLabel = installButton.querySelector('.label-wbfsE');
     if (buttonLabel) {
         buttonLabel.textContent = 'Install';
@@ -225,7 +213,8 @@ function onDownloadComplete(): void {
     (ignoreButton as HTMLElement).style.opacity = '1';
     (ignoreButton as HTMLElement).style.pointerEvents = 'auto';
 
-    // For macOS, auto-install after download (different flow than Windows/Linux)
+    // For macOS, auto-install after download (to show progress immediately)
+    const platform = process.platform;
     if (platform === 'darwin' && installerPath) {
         setTimeout(() => {
             ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL_START, installerPath).catch((error: Error) => {
@@ -289,19 +278,29 @@ function onUpdateError(stage: string, message: string): void {
 
     statusText.textContent = `Error during ${stage}`;
 
+    // Add helpful context to error messages
+    let displayMessage = message;
+    if (stage === 'download') {
+        if (message.includes('corrupted') || message.includes('size')) {
+            displayMessage += '\n\nThis usually happens due to network issues. Click "Retry Download" to try again. If it keeps failing, try downloading the update manually from the releases page.';
+        } else if (message.includes('HTTP') || message.includes('Network')) {
+            displayMessage += '\n\nPlease check your internet connection and try again.';
+        }
+    } else if (stage === 'install') {
+        if (message.includes('integrity') || message.includes('NSIS')) {
+            displayMessage = 'The installer file may be corrupted. Click "Retry" to download and install again.';
+        }
+    }
+
     // Show detailed error message with line breaks preserved
-    detailsText.innerHTML = message.replace(/\n/g, '<br>');
+    detailsText.innerHTML = displayMessage.replace(/\n/g, '<br>');
     detailsText.style.color = '#ff6b6b';
     progressBar.style.background = 'linear-gradient(90deg, #e74c3c, #c0392b)';
 
     // Re-enable buttons
     const buttonLabel = installButton.querySelector('.label-wbfsE');
     if (buttonLabel) {
-        if (stage === 'download') {
-            buttonLabel.textContent = 'Retry Download';
-        } else {
-            buttonLabel.textContent = 'Retry Install';
-        }
+        buttonLabel.textContent = 'Retry';
     }
     (installButton as HTMLElement).style.opacity = '1';
     (installButton as HTMLElement).style.pointerEvents = 'auto';

@@ -5,7 +5,7 @@ import { join, basename } from "path";
 import { getUpdateModalTemplate } from "../components/update-modal/updateModal";
 import { URLS } from "../constants";
 import https from "https";
-import { createWriteStream, unlinkSync, existsSync, writeFileSync } from "fs";
+import { createWriteStream, unlinkSync, existsSync, writeFileSync, statSync } from "fs";
 import { promisify } from "util";
 import { execFile } from "child_process";
 
@@ -263,17 +263,21 @@ class Updater {
     }
 
     /**
-     * Download the installer file with progress tracking
+     * Download the installer file with progress tracking and integrity verification
      */
     public static async downloadUpdate(
         installerUrl: string,
         destPath: string,
-        onProgress: (progress: number, bytesDownloaded: number, totalBytes: number) => void
+        onProgress: (progress: number, bytesDownloaded: number, totalBytes: number) => void,
+        retryCount: number = 0
     ): Promise<void> {
+        const MAX_RETRIES = 3;
+
         return new Promise((resolve, reject) => {
             const file = createWriteStream(destPath);
             let resolved = false;
-            
+            let expectedBytes = 0;
+
             const cleanup = (error?: Error) => {
                 if (resolved) return;
                 file.close(() => {
@@ -295,7 +299,13 @@ class Updater {
                 cleanup(error);
             });
 
-            https.get(installerUrl, { headers: { "User-Agent": "StreamGo-Updater" } }, (res) => {
+            https.get(installerUrl, {
+                headers: {
+                    "User-Agent": "StreamGo-Updater",
+                    "Accept": "*/*"
+                },
+                timeout: 30000 // 30 second timeout
+            }, (res) => {
                 // Handle redirects
                 const redirectLocation = res.headers.location;
                 if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && redirectLocation) {
@@ -308,7 +318,7 @@ class Updater {
                             }
                         }
                         // Recursively follow redirect
-                        Updater.downloadUpdate(redirectLocation, destPath, onProgress)
+                        Updater.downloadUpdate(redirectLocation, destPath, onProgress, retryCount)
                             .then(() => {
                                 if (!resolved) {
                                     resolved = true;
@@ -330,13 +340,15 @@ class Updater {
                     return;
                 }
 
-                const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
+                expectedBytes = parseInt(res.headers['content-length'] || '0', 10);
                 let bytesDownloaded = 0;
+
+                this.logger.info(`Starting download: expecting ${expectedBytes} bytes`);
 
                 res.on('data', (chunk: Buffer) => {
                     bytesDownloaded += chunk.length;
-                    const progress = totalBytes > 0 ? (bytesDownloaded / totalBytes) * 100 : 0;
-                    onProgress(progress, bytesDownloaded, totalBytes);
+                    const progress = expectedBytes > 0 ? (bytesDownloaded / expectedBytes) * 100 : 0;
+                    onProgress(progress, bytesDownloaded, expectedBytes);
                 });
 
                 res.pipe(file);
@@ -344,9 +356,76 @@ class Updater {
                 file.on('finish', () => {
                     file.close(() => {
                         if (!resolved) {
-                            resolved = true;
-                            this.logger.info(`Download complete: ${bytesDownloaded} bytes downloaded`);
-                            resolve();
+                            // Verify download integrity
+                            try {
+                                const actualSize = statSync(destPath).size;
+                                this.logger.info(`Download finished: ${actualSize} bytes written, expected ${expectedBytes} bytes`);
+
+                                if (expectedBytes > 0 && actualSize !== expectedBytes) {
+                                    // File size mismatch - corrupted download
+                                    this.logger.error(`File size mismatch: got ${actualSize}, expected ${expectedBytes}`);
+
+                                    if (retryCount < MAX_RETRIES) {
+                                        this.logger.info(`Retrying download (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+                                        // Clean up partial file
+                                        try {
+                                            unlinkSync(destPath);
+                                        } catch (err) {
+                                            // Ignore
+                                        }
+                                        // Retry download
+                                        Updater.downloadUpdate(installerUrl, destPath, onProgress, retryCount + 1)
+                                            .then(() => {
+                                                resolved = true;
+                                                resolve();
+                                            })
+                                            .catch((error) => {
+                                                resolved = true;
+                                                reject(error);
+                                            });
+                                        return;
+                                    } else {
+                                        resolved = true;
+                                        reject(new Error(`Download corrupted: file size is ${actualSize} bytes but expected ${expectedBytes} bytes. Please check your internet connection and try again.`));
+                                        return;
+                                    }
+                                }
+
+                                // Verify minimum file size (at least 1MB for installers)
+                                if (actualSize < 1024 * 1024) {
+                                    this.logger.error(`Downloaded file is suspiciously small: ${actualSize} bytes`);
+
+                                    if (retryCount < MAX_RETRIES) {
+                                        this.logger.info(`Retrying download (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+                                        try {
+                                            unlinkSync(destPath);
+                                        } catch (err) {
+                                            // Ignore
+                                        }
+                                        Updater.downloadUpdate(installerUrl, destPath, onProgress, retryCount + 1)
+                                            .then(() => {
+                                                resolved = true;
+                                                resolve();
+                                            })
+                                            .catch((error) => {
+                                                resolved = true;
+                                                reject(error);
+                                            });
+                                        return;
+                                    } else {
+                                        resolved = true;
+                                        reject(new Error(`Downloaded file is too small (${actualSize} bytes). Download may have failed.`));
+                                        return;
+                                    }
+                                }
+
+                                resolved = true;
+                                this.logger.info('Download verified successfully');
+                                resolve();
+                            } catch (error) {
+                                resolved = true;
+                                reject(new Error(`Failed to verify downloaded file: ${(error as Error).message}`));
+                            }
                         }
                     });
                 });
@@ -355,7 +434,27 @@ class Updater {
                     cleanup(error);
                 });
             }).on('error', (error: Error) => {
-                cleanup(error);
+                if (retryCount < MAX_RETRIES) {
+                    this.logger.info(`Network error, retrying download (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+                    cleanup();
+                    setTimeout(() => {
+                        Updater.downloadUpdate(installerUrl, destPath, onProgress, retryCount + 1)
+                            .then(() => {
+                                if (!resolved) {
+                                    resolved = true;
+                                    resolve();
+                                }
+                            })
+                            .catch((err) => {
+                                if (!resolved) {
+                                    resolved = true;
+                                    reject(err);
+                                }
+                            });
+                    }, 2000); // Wait 2 seconds before retry
+                } else {
+                    cleanup(error);
+                }
             });
         });
     }
@@ -368,29 +467,40 @@ class Updater {
 
         switch (platform) {
             case "win32": {
-                // NSIS installer - launch with UI and quit app so installer can replace files
+                // NSIS installer - silent installation with auto-restart
                 this.logger.info(`Installing update on Windows: ${installerPath}`);
 
                 try {
-                    // Launch installer with admin privileges - REMOVED /S flag to show installer UI
-                    // This gives user clear feedback about installation progress
-                    const ps = `Start-Process -FilePath "${installerPath}" -Verb RunAs`;
-                    await execFileAsync("powershell.exe", [
+                    // Launch installer silently with auto-run flag
+                    // /S = Silent mode
+                    // --updated = Special flag to launch app after install (passed to the new version)
+                    const ps = `Start-Process -FilePath "${installerPath}" -ArgumentList '/S' -Verb RunAs -Wait`;
+
+                    // Launch installer and wait for it to complete
+                    const execPromise = execFileAsync("powershell.exe", [
                         "-ExecutionPolicy", "Bypass",
                         "-NoProfile",
                         "-Command", ps
                     ], {
                         windowsHide: true,
                     });
-                    this.logger.info("Windows installer launched successfully, app will now exit");
 
-                    // Wait a moment to ensure installer is launched
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    this.logger.info("Windows installer launched silently, app will now exit");
 
-                    // Don't clean up installer file on Windows - the installer is still running
-                    // Exit so installer can replace the running executable
+                    // Give the installer process time to start (500ms), then quit the app
+                    // The installer needs the app to quit before it can replace files
+                    await new Promise(resolve => setTimeout(resolve, 500));
+
+                    // Quit the app so installer can replace files
+                    // The installer will auto-launch the new version after installation completes
                     if (app) {
-                        app.exit(0);
+                        // Don't wait for installer to finish - just quit immediately
+                        app.quit();
+
+                        // Background: Let the promise resolve/reject in the background
+                        execPromise.catch((error) => {
+                            this.logger.error(`Installer background error: ${(error as Error).message}`);
+                        });
                     }
                 } catch (error) {
                     this.logger.error(`Failed to launch Windows installer: ${(error as Error).message}`);
@@ -399,24 +509,68 @@ class Updater {
                 return; // Skip cleanup since we're exiting
             }
             case "darwin": {
-                // Mount DMG and copy app
+                // Mount DMG, install, and restart on macOS
                 this.logger.info(`Installing update on macOS: ${installerPath}`);
                 const volume = "/Volumes/StreamGo";
+
                 try {
-                    await execFileAsync("hdiutil", ["attach", installerPath, "-mountpoint", volume]);
+                    // Mount the DMG
+                    this.logger.info("Mounting DMG...");
+                    await execFileAsync("hdiutil", ["attach", installerPath, "-mountpoint", volume, "-nobrowse"]);
+
                     // Find the .app bundle in the mounted volume
                     const appPath = `${volume}/StreamGo.app`;
-                    if (existsSync(appPath)) {
-                        await execFileAsync("cp", ["-R", appPath, "/Applications/"]);
-                    } else {
+                    if (!existsSync(appPath)) {
                         throw new Error("StreamGo.app not found in DMG");
                     }
-                } finally {
+
+                    // Remove old version if it exists
+                    const installPath = "/Applications/StreamGo.app";
+                    if (existsSync(installPath)) {
+                        this.logger.info("Removing old version...");
+                        await execFileAsync("rm", ["-rf", installPath]);
+                    }
+
+                    // Copy new version to Applications
+                    this.logger.info("Copying new version to Applications...");
+                    await execFileAsync("cp", ["-R", appPath, "/Applications/"]);
+
+                    // Unmount the DMG
+                    this.logger.info("Unmounting DMG...");
+                    await execFileAsync("hdiutil", ["detach", volume]).catch((error) => {
+                        this.logger.warn(`Failed to detach volume: ${(error as Error).message}`);
+                    });
+
+                    // Clean up the downloaded DMG
+                    try {
+                        unlinkSync(installerPath);
+                        this.logger.info("Cleaned up installer file");
+                    } catch (error) {
+                        this.logger.warn(`Failed to delete installer: ${(error as Error).message}`);
+                    }
+
+                    // Restart the app with the new version
+                    this.logger.info("Restarting app with new version...");
+                    if (app) {
+                        // Use 'open' command to launch the new version and then quit
+                        execFileAsync("open", ["-n", installPath]).catch((error) => {
+                            this.logger.error(`Failed to launch new version: ${(error as Error).message}`);
+                        });
+
+                        // Wait a moment for the new instance to start, then quit this one
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        app.quit();
+                    }
+
+                    return; // Skip the cleanup at the end since we already handled it
+                } catch (error) {
+                    // Clean up on error
+                    this.logger.error(`macOS installation failed: ${(error as Error).message}`);
                     await execFileAsync("hdiutil", ["detach", volume]).catch(() => {
                         // Ignore errors when detaching
                     });
+                    throw error;
                 }
-                break;
             }
             case "linux": {
                 // Replace existing AppImage using atomic move operation
