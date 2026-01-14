@@ -141,8 +141,7 @@
 			"oneClick": true,
 			"perMachine": false,
 			"allowElevation": true,
-			"deleteAppDataOnUninstall": false,
-			"include": "build/installer.nsh"
+			"deleteAppDataOnUninstall": false
 		},
 		"mac": {
 			"target": "dmg",
