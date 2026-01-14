@@ -3046,29 +3046,29 @@ let isRemoteAction = false; // Flag to prevent feedback loops
 
 // Video event handlers for party sync
 function onPartyVideoPlay(): void {
-    if (isRemoteAction || !partyService.connected) return;
-    // Any member can broadcast play (allows non-hosts to control playback)
-    logger.info('[Party] Member played video - broadcasting');
-    partyService.broadcastMemberStateChange(partyVideoElement!, true);
+    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
+    // Only hosts can broadcast play/pause (server only forwards commands from hosts)
+    logger.info('[Party] Host played video - broadcasting');
+    partyService.broadcastStateChange(partyVideoElement!, true);
 }
 
 function onPartyVideoPause(): void {
-    if (isRemoteAction || !partyService.connected) return;
-    // Any member can broadcast pause (allows non-hosts to control playback)
-    logger.info('[Party] Member paused video - broadcasting');
-    partyService.broadcastMemberStateChange(partyVideoElement!, true);
+    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
+    // Only hosts can broadcast play/pause (server only forwards commands from hosts)
+    logger.info('[Party] Host paused video - broadcasting');
+    partyService.broadcastStateChange(partyVideoElement!, true);
 }
 
 function onPartyVideoSeeked(): void {
-    if (isRemoteAction || !partyService.connected) return;
-    // Any member can seek (allows non-hosts to control playback)
-    logger.info('[Party] Member seeked video - broadcasting');
-    partyService.broadcastMemberStateChange(partyVideoElement!, true);
+    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
+    // Only hosts can broadcast seek (server only forwards commands from hosts)
+    logger.info('[Party] Host seeked video - broadcasting');
+    partyService.broadcastStateChange(partyVideoElement!, true);
 }
 
 function onPartyVideoRateChange(): void {
     if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
-    // Only hosts can change playback rate
+    // Only hosts can broadcast playback rate changes
     logger.info('[Party] Host changed playback rate - broadcasting');
     partyService.broadcastStateChange(partyVideoElement!, false);
 }
@@ -3149,8 +3149,6 @@ function setupPartyListeners(): void {
 
         // Handle stream update commands (navigate to same video)
         if (command === 'updateStream') {
-            if (partyService.isHost) return;
-
             const streamUrl = data?.url;
             if (streamUrl && streamUrl !== lastSyncedStreamUrl && streamUrl !== location.hash) {
                 logger.info('[Party] Received stream sync from host:', streamUrl);
@@ -3162,12 +3160,12 @@ function setupPartyListeners(): void {
 
         // Handle video state sync commands (play/pause/seek)
         if (command === 'state') {
-            if (partyService.isHost) return;
-
             const video = document.querySelector('video') as HTMLVideoElement;
             if (!video || !partyService.autoSync) return;
 
             // Set flag to prevent feedback loop
+            // NOTE: We process commands regardless of host status. The server ensures
+            // only hosts can send commands, so we trust all incoming commands.
             isRemoteAction = true;
 
             try {

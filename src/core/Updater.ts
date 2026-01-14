@@ -5,7 +5,7 @@ import { join, basename } from "path";
 import { getUpdateModalTemplate } from "../components/update-modal/updateModal";
 import { URLS } from "../constants";
 import https from "https";
-import { createWriteStream, unlinkSync, existsSync } from "fs";
+import { createWriteStream, unlinkSync, existsSync, writeFileSync } from "fs";
 import { promisify } from "util";
 import { execFile } from "child_process";
 
@@ -368,23 +368,33 @@ class Updater {
 
         switch (platform) {
             case "win32": {
-                // NSIS installer - launch without waiting and quit app so installer can replace files
+                // NSIS installer - launch with UI and quit app so installer can replace files
                 this.logger.info(`Installing update on Windows: ${installerPath}`);
-                // Launch installer with admin privileges but don't wait - the app needs to exit
-                // so the installer can replace the running executable
-                const ps = `Start-Process -FilePath "${installerPath}" -ArgumentList '/S' -Verb RunAs`;
-                await execFileAsync("powershell.exe", [
-                    "-ExecutionPolicy", "Bypass",
-                    "-NoProfile",
-                    "-Command", ps
-                ], {
-                    windowsHide: true,
-                });
-                this.logger.info("Windows installer launched, app will now exit");
-                // Don't clean up installer file on Windows - the installer is still running
-                // Exit immediately so installer can replace files
-                if (app) {
-                    app.exit(0);
+
+                try {
+                    // Launch installer with admin privileges - REMOVED /S flag to show installer UI
+                    // This gives user clear feedback about installation progress
+                    const ps = `Start-Process -FilePath "${installerPath}" -Verb RunAs`;
+                    await execFileAsync("powershell.exe", [
+                        "-ExecutionPolicy", "Bypass",
+                        "-NoProfile",
+                        "-Command", ps
+                    ], {
+                        windowsHide: true,
+                    });
+                    this.logger.info("Windows installer launched successfully, app will now exit");
+
+                    // Wait a moment to ensure installer is launched
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+
+                    // Don't clean up installer file on Windows - the installer is still running
+                    // Exit so installer can replace the running executable
+                    if (app) {
+                        app.exit(0);
+                    }
+                } catch (error) {
+                    this.logger.error(`Failed to launch Windows installer: ${(error as Error).message}`);
+                    throw new Error(`Failed to launch installer. Please try running it manually from: ${installerPath}\n\nError: ${(error as Error).message}`);
                 }
                 return; // Skip cleanup since we're exiting
             }
@@ -409,26 +419,110 @@ class Updater {
                 break;
             }
             case "linux": {
-                // Replace existing AppImage
+                // Replace existing AppImage using atomic move operation
                 this.logger.info(`Installing update on Linux: ${installerPath}`);
                 const appImagePath = process.execPath; // Current AppImage path
+
                 if (appImagePath.endsWith(".AppImage") || appImagePath.endsWith(".appimage")) {
-                    await execFileAsync("cp", [installerPath, appImagePath]);
-                    await execFileAsync("chmod", ["+x", appImagePath]);
+                    try {
+                        // Make new AppImage executable
+                        await execFileAsync("chmod", ["+x", installerPath]);
+
+                        // Create backup of current AppImage
+                        const backupPath = `${appImagePath}.backup`;
+                        try {
+                            await execFileAsync("cp", [appImagePath, backupPath]);
+                            this.logger.info(`Created backup at: ${backupPath}`);
+                        } catch (error) {
+                            this.logger.warn(`Failed to create backup: ${(error as Error).message}`);
+                        }
+
+                        // Use a helper script to replace the AppImage after this process exits
+                        // This is necessary because we can't replace a running executable
+                        const helperScript = `#!/bin/bash
+# StreamGo Update Helper Script
+# This script replaces the old AppImage with the new one and restarts the app
+
+set -e  # Exit on error
+
+# Wait for the app to fully exit
+echo "Waiting for app to exit..."
+sleep 2
+
+# Check if new AppImage exists
+if [ ! -f "${installerPath}" ]; then
+    echo "Error: New AppImage not found at ${installerPath}"
+    exit 1
+fi
+
+# Check if old AppImage exists
+if [ ! -f "${appImagePath}" ]; then
+    echo "Error: Old AppImage not found at ${appImagePath}"
+    exit 1
+fi
+
+# Replace old AppImage with new one
+echo "Replacing old AppImage..."
+if ! mv -f "${installerPath}" "${appImagePath}"; then
+    echo "Error: Failed to replace AppImage. You may need to manually copy the new version."
+    echo "New version is located at: ${installerPath}"
+    exit 1
+fi
+
+# Make sure it's executable
+echo "Setting executable permissions..."
+chmod +x "${appImagePath}"
+
+# Launch the new version
+echo "Launching updated app..."
+"${appImagePath}" &
+
+# Clean up this script
+rm -f "$0"
+
+echo "Update complete!"
+`;
+                        if (!app) {
+                            throw new Error("App not available - cannot create update script");
+                        }
+                        const scriptPath = join(app.getPath("temp"), "streamgo-update.sh");
+                        writeFileSync(scriptPath, helperScript, { mode: 0o755 });
+
+                        this.logger.info(`Created update helper script at: ${scriptPath}`);
+
+                        // Launch the helper script in the background
+                        execFileAsync("bash", [scriptPath]).catch((error) => {
+                            this.logger.error(`Helper script failed: ${(error as Error).message}`);
+                        });
+
+                        // Quit the app immediately so the helper can replace the file
+                        this.logger.info("App will now exit for update to complete");
+                        await new Promise(resolve => setTimeout(resolve, 500));
+
+                        if (app) {
+                            app.exit(0);
+                        }
+
+                    } catch (error) {
+                        this.logger.error(`Failed to install update on Linux: ${(error as Error).message}`);
+                        throw new Error(`Failed to install update. Please manually replace your AppImage with the downloaded file at: ${installerPath}\n\nError: ${(error as Error).message}`);
+                    }
                 } else {
                     // If not running from AppImage, copy to a standard location
                     const targetPath = join(process.env.HOME || "/home", "Applications", basename(installerPath));
                     await execFileAsync("mkdir", ["-p", join(process.env.HOME || "/home", "Applications")]);
                     await execFileAsync("cp", [installerPath, targetPath]);
                     await execFileAsync("chmod", ["+x", targetPath]);
+
+                    throw new Error(`Update downloaded to: ${targetPath}\n\nPlease manually launch the new version.`);
                 }
-                break;
+                return; // Skip cleanup since we're exiting or script will handle it
             }
             default:
                 throw new Error(`Unsupported platform: ${platform}`);
         }
 
-        // Clean up installer file after successful installation
+        // Clean up installer file after successful installation (macOS only reaches here)
         try {
             if (existsSync(installerPath)) {
                 unlinkSync(installerPath);

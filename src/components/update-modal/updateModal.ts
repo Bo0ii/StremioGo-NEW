@@ -53,7 +53,8 @@ function initializeUpdateModal(): void {
         if (updateState === 'idle') {
             await startDownload();
         } else if (updateState === 'completed') {
-            restartApplication();
+            // After download is complete, start installation
+            await startInstallation();
         }
     });
 
@@ -98,7 +99,7 @@ function initializeUpdateModal(): void {
 
 async function startDownload(): Promise<void> {
     updateState = 'downloading';
-    
+
     const installButton = document.getElementById('updateInstallButton');
     const ignoreButton = document.getElementById('updateIgnoreButton');
     const progressContainer = document.getElementById('updateProgressContainer');
@@ -126,6 +127,48 @@ async function startDownload(): Promise<void> {
     }
 }
 
+async function startInstallation(): Promise<void> {
+    if (!installerPath) {
+        onUpdateError('install', 'Installer path not found. Please try downloading again.');
+        return;
+    }
+
+    updateState = 'installing';
+
+    const installButton = document.getElementById('updateInstallButton');
+    const ignoreButton = document.getElementById('updateIgnoreButton');
+    const statusText = document.getElementById('updateStatusText');
+    const detailsText = document.getElementById('updateDetailsText');
+
+    if (!installButton || !ignoreButton || !statusText || !detailsText) return;
+
+    const platform = process.platform;
+
+    // Update UI for installing state
+    (installButton as HTMLElement).style.opacity = '0.6';
+    (installButton as HTMLElement).style.pointerEvents = 'none';
+    (ignoreButton as HTMLElement).style.opacity = '0.6';
+    (ignoreButton as HTMLElement).style.pointerEvents = 'none';
+
+    if (platform === 'win32') {
+        statusText.textContent = 'Starting installer...';
+        detailsText.textContent = 'The app will close and the installer will run. Please follow the installer instructions.';
+    } else if (platform === 'linux') {
+        statusText.textContent = 'Applying update...';
+        detailsText.textContent = 'The app will close and restart automatically with the new version.';
+    }
+
+    try {
+        const result = await ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL_START, installerPath);
+        if (!result.success) {
+            throw new Error(result.error || 'Installation failed');
+        }
+        // Note: For Windows and Linux, the app will quit before we get here
+    } catch (error) {
+        onUpdateError('install', (error as Error).message);
+    }
+}
+
 function updateDownloadProgress(progress: number, bytesDownloaded: number, totalBytes: number): void {
     const progressBar = document.getElementById('updateProgressBar');
     const statusText = document.getElementById('updateStatusText');
@@ -143,23 +186,52 @@ function updateDownloadProgress(progress: number, bytesDownloaded: number, total
 }
 
 function onDownloadComplete(): void {
-    updateState = 'installing';
-    
+    updateState = 'completed';
+
+    const installButton = document.getElementById('updateInstallButton');
+    const ignoreButton = document.getElementById('updateIgnoreButton');
     const statusText = document.getElementById('updateStatusText');
     const detailsText = document.getElementById('updateDetailsText');
     const progressBar = document.getElementById('updateProgressBar');
 
-    if (!statusText || !detailsText || !progressBar) return;
+    if (!installButton || !ignoreButton || !statusText || !detailsText || !progressBar) return;
 
-    statusText.textContent = 'Download complete. Installing update...';
-    detailsText.textContent = 'This may take a few moments...';
     progressBar.style.width = '100%';
 
-    // Start installation
-    if (installerPath) {
-        ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL_START, installerPath).catch((error: Error) => {
-            onUpdateError('install', error.message);
-        });
+    // Platform-specific messaging
+    const platform = process.platform;
+
+    if (platform === 'win32') {
+        statusText.textContent = 'Download complete! Ready to install.';
+        detailsText.textContent = 'Click Install to close this app and run the installer. The installer will guide you through the update process.';
+    } else if (platform === 'linux') {
+        statusText.textContent = 'Download complete! Ready to install.';
+        detailsText.textContent = 'Click Install to close this app and apply the update. The app will restart automatically with the new version.';
+    } else if (platform === 'darwin') {
+        statusText.textContent = 'Download complete! Installing update...';
+        detailsText.textContent = 'Please wait while the update is installed...';
+    }
+
+    // Update button to show "Install" (or start auto-install for macOS)
+    const buttonLabel = installButton.querySelector('.label-wbfsE');
+    if (buttonLabel) {
+        buttonLabel.textContent = 'Install';
+    }
+    installButton.setAttribute('title', 'Install Update');
+    (installButton as HTMLElement).style.opacity = '1';
+    (installButton as HTMLElement).style.pointerEvents = 'auto';
+
+    // Re-enable ignore button
+    (ignoreButton as HTMLElement).style.opacity = '1';
+    (ignoreButton as HTMLElement).style.pointerEvents = 'auto';
+
+    // For macOS, auto-install after download (different flow than Windows/Linux)
+    if (platform === 'darwin' && installerPath) {
+        setTimeout(() => {
+            ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL_START, installerPath).catch((error: Error) => {
+                onUpdateError('install', error.message);
+            });
+        }, 500);
     }
 }
 
@@ -169,13 +241,15 @@ function onInstallStart(): void {
 
     if (!statusText || !detailsText) return;
 
+    // This is only reached on macOS (Windows/Linux quit before this event)
     statusText.textContent = 'Installing update...';
     detailsText.textContent = 'Please wait while the update is installed...';
 }
 
 function onInstallComplete(): void {
+    // This is only reached on macOS (Windows/Linux quit before this event)
     updateState = 'completed';
-    
+
     const installButton = document.getElementById('updateInstallButton');
     const ignoreButton = document.getElementById('updateIgnoreButton');
     const statusText = document.getElementById('updateStatusText');
@@ -197,14 +271,14 @@ function onInstallComplete(): void {
     installButton.setAttribute('title', 'Restart');
     (installButton as HTMLElement).style.opacity = '1';
     (installButton as HTMLElement).style.pointerEvents = 'auto';
-    
+
     // Re-enable ignore button but hide it since we want to encourage restart
     (ignoreButton as HTMLElement).style.opacity = '0.5';
 }
 
 function onUpdateError(stage: string, message: string): void {
     updateState = 'error';
-    
+
     const installButton = document.getElementById('updateInstallButton');
     const ignoreButton = document.getElementById('updateIgnoreButton');
     const statusText = document.getElementById('updateStatusText');
@@ -214,23 +288,34 @@ function onUpdateError(stage: string, message: string): void {
     if (!installButton || !ignoreButton || !statusText || !detailsText || !progressBar) return;
 
     statusText.textContent = `Error during ${stage}`;
-    detailsText.textContent = message;
+
+    // Show detailed error message with line breaks preserved
+    detailsText.innerHTML = message.replace(/\n/g, '<br>');
+    detailsText.style.color = '#ff6b6b';
     progressBar.style.background = 'linear-gradient(90deg, #e74c3c, #c0392b)';
 
     // Re-enable buttons
     const buttonLabel = installButton.querySelector('.label-wbfsE');
     if (buttonLabel) {
-        buttonLabel.textContent = 'Retry';
+        if (stage === 'download') {
+            buttonLabel.textContent = 'Retry Download';
+        } else {
+            buttonLabel.textContent = 'Retry Install';
+        }
     }
     (installButton as HTMLElement).style.opacity = '1';
     (installButton as HTMLElement).style.pointerEvents = 'auto';
     (ignoreButton as HTMLElement).style.opacity = '1';
     (ignoreButton as HTMLElement).style.pointerEvents = 'auto';
+
+    // Reset state to idle so retry will work
+    updateState = 'idle';
+    installerPath = null;
 }
 
-function restartApplication(): void {
-    ipcRenderer.send(IPC_CHANNELS.UPDATE_RESTART_APP);
-}
+// Removed: restartApplication - not used in current flow
+// For macOS, the app automatically restarts after installation
+// For Windows/Linux, the app quits and installer/script handles the restart
 
 function cleanupAndClose(): void {
     // Remove IPC listeners to prevent memory leaks

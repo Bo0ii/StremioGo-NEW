@@ -77,6 +77,8 @@ class PartyService extends EventEmitter {
 	private _startMsgTime = 0;
 	private _failedServers: string[] = [];
 	private _myUserId: string | null = null;
+	private _isCreator = false; // Track if we created this party
+	private _userIdDetected = false; // Track if we've identified our userId
 
 	// Getters
 	get connected(): boolean { return this._connected; }
@@ -233,6 +235,10 @@ class PartyService extends EventEmitter {
 		this.savePartyName(partyName);
 		this.saveJoinAsHost(joinAsHost);
 
+		// Mark that we're creating (not joining) this party
+		this._isCreator = true;
+		this._userIdDetected = false;
+
 		// Build protocol string: c#version#username#password#partyname#joinAsHost
 		const protocol = `c#${WATCHPARTY_VERSION}#${encodeURIComponent(username)}#${encodeURIComponent(password)}#${encodeURIComponent(partyName)}#${joinAsHost ? '1' : '0'}`;
 
@@ -248,6 +254,10 @@ class PartyService extends EventEmitter {
 
 		// Save username
 		this.saveUsername(username);
+
+		// Mark that we're joining (not creating) this party
+		this._isCreator = false;
+		this._userIdDetected = false;
 
 		// Get server prefix from party code (first character)
 		const serverPrefix = partyCode.charAt(0);
@@ -273,6 +283,8 @@ class PartyService extends EventEmitter {
 		this._room = null;
 		this._messages = [];
 		this._myUserId = null;
+		this._isCreator = false;
+		this._userIdDetected = false;
 	}
 
 	/**
@@ -353,13 +365,23 @@ class PartyService extends EventEmitter {
 				const party = JSON.parse(data.substring(6)) as WatchPartyRoom;
 				const previousRoom = this._room;
 
-				// Store our user ID from the WebSocket key (set by server)
-				if (!this._myUserId && this.socket) {
-					// Find ourselves in the member list (we're the newest member)
-					if (!previousRoom && party.members.length > 0) {
-						// On first join, we're likely the last member added
+				// Detect our userId ONLY on the first party message
+				if (!this._userIdDetected && party.members.length > 0) {
+					if (this._isCreator) {
+						// If we created the party, we're the first member
+						this._myUserId = party.members[0].userId;
+						logger.info('[Party] Detected creator userId:', this._myUserId);
+					} else {
+						// If we joined the party, we're the newest (last) member
 						this._myUserId = party.members[party.members.length - 1].userId;
+						logger.info('[Party] Detected joiner userId:', this._myUserId);
 					}
+					this._userIdDetected = true;
+
+					// Log host status for debugging
+					const me = party.members.find(m => m.userId === this._myUserId);
+					logger.info('[Party] I am host:', me?.isHost, 'My username:', me?.userName);
+					console.log('[Party] User detected - isHost:', me?.isHost, 'userId:', this._myUserId);
 				}
 
 				// Detect join/leave/host changes for system messages
