@@ -12,4 +12,5 @@ SetDatablockOptimize off
 SetOverwrite on
 SetDateSave on
 
-; Note: Compression is disabled (set to "store" in package.json) to avoid decompression errors
+; Note: Compression is set to "normal" (zlib) in package.json for good balance between size and reliability
+; This avoids decompression errors while still compressing the installer significantly
