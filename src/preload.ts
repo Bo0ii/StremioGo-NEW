@@ -57,7 +57,7 @@ let settingsInitialized = false;
 let pluginsLoaded = false;
 
 // Debounce interval for mutation observer (ms) - reduces CPU by batching rapid mutations
-const OBSERVER_DEBOUNCE_MS = 100;
+const OBSERVER_DEBOUNCE_MS = 200; // Increased from 100ms to reduce CPU usage
 
 // Check if performance mode is enabled (skip observer processing)
 function isPerformanceModeActive(): boolean {
@@ -2727,11 +2727,11 @@ async function handleExternalPlayerInterception(): Promise<void> {
 
                 // Log progress periodically (every 5 seconds)
                 const elapsed = Date.now() - startTime;
-                if (elapsed > 0 && elapsed % 5000 < 100) {
+                if (elapsed > 0 && elapsed % 5000 < 500) {
                     logger.info(`[ExternalPlayer] Still waiting... readyState: ${video.readyState}, currentTime: ${video.currentTime}, elapsed: ${(elapsed/1000).toFixed(0)}s`);
                 }
             }
-        }, 100); // Check every 100ms
+        }, 500); // Increased from 100ms to reduce CPU usage
     });
 
     await waitForPlayback;
@@ -3027,7 +3027,7 @@ function initPartyVideoSync(): void {
             clearInterval(checkForVideo);
             setupPartyVideoListeners(video);
         }
-    }, 200);
+    }, 500); // Increased from 200ms to reduce CPU usage
 
     // Stop checking after 10 seconds
     setTimeout(() => clearInterval(checkForVideo), 10000);

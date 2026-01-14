@@ -114,7 +114,7 @@ app.commandLine.appendSwitch('num-raster-threads', '4');
 
 // Prevent throttling for consistent frame pacing
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('disable-background-timer-throttling');
+// REMOVED: disable-background-timer-throttling - prevents macOS power management and causes overheating
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-hang-monitor');
 app.commandLine.appendSwitch('enable-highres-timer');

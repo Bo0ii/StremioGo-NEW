@@ -15,7 +15,7 @@ claude/
 .claude/
 todo.md
 .mcp.json
-
+tmpclaude-*
 # OS-specific files
 .DS_Store
 .DS_Store?

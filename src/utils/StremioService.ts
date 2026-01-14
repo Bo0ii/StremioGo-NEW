@@ -811,14 +811,57 @@ class StremioService {
             // Use stored PID first, fall back to system lookup
             const pid = this.servicePid || this.getStremioServicePid();
             if (pid) {
-                process.kill(pid, 'SIGTERM');
-                this.logger.info("Stremio Service terminated.");
+                if (process.platform === 'win32') {
+                    // On Windows, use taskkill with /F (force) and /T (kill process tree)
+                    // This ensures child processes like stremio-runtime.exe are also terminated
+                    try {
+                        const execSync = require('child_process').execSync;
+                        execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' });
+                        this.logger.info(`Stremio Service (PID: ${pid}) and its child processes terminated.`);
+                    } catch (taskkillError) {
+                        // If taskkill fails, try the old method as fallback
+                        this.logger.warn(`taskkill failed, trying process.kill: ${(taskkillError as Error).message}`);
+                        try {
+                            process.kill(pid, 'SIGTERM');
+                            this.logger.info("Stremio Service terminated via process.kill.");
+                        } catch (killError) {
+                            this.logger.error(`Both termination methods failed: ${(killError as Error).message}`);
+                            // Reset tracking flags even on error
+                            this.appStartedService = false;
+                            this.servicePid = null;
+                            return 2;
+                        }
+                    }
+                    // Also kill any remaining stremio-runtime.exe processes as a safety measure
+                    try {
+                        const execSync = require('child_process').execSync;
+                        execSync('taskkill /F /IM stremio-runtime.exe', { stdio: 'ignore' });
+                        this.logger.info("Killed any remaining stremio-runtime.exe processes.");
+                    } catch (runtimeError) {
+                        // Ignore if no stremio-runtime.exe processes are running
+                        // Error code 128 typically means "process not found"
+                    }
+                } else {
+                    // On Unix-like systems, SIGTERM should properly terminate child processes
+                    process.kill(pid, 'SIGTERM');
+                    this.logger.info("Stremio Service terminated.");
+                }
                 // Reset tracking flags
                 this.appStartedService = false;
                 this.servicePid = null;
                 return 0;
             } else {
                 this.logger.error("Failed to find Stremio Service PID.");
+                // Try to kill stremio-runtime.exe processes directly if PID not found
+                if (process.platform === 'win32') {
+                    try {
+                        const execSync = require('child_process').execSync;
+                        execSync('taskkill /F /IM stremio-runtime.exe', { stdio: 'ignore' });
+                        this.logger.info("Killed stremio-runtime.exe processes directly.");
+                    } catch (runtimeError) {
+                        // Ignore if no stremio-runtime.exe processes are running
+                    }
+                }
                 return 1;
             }
         } catch (e) {
