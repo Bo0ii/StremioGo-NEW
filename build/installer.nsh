@@ -3,19 +3,15 @@
 
 ; Disable CRC check - sometimes electron-builder creates installers that fail NSIS CRC
 ; even though the files are fine. This is a known issue with large electron apps.
+; This is the primary fix for large Electron applications.
 CRCCheck off
 
-; Use solid compression for better reliability and smaller size with large files
-SetCompressor /SOLID lzma
-SetCompressorDictSize 64
-
-; Set data block optimization for better performance
+; Set data block optimization for better performance with large files
 SetDatablockOptimize on
-
-; Increase timeout for extraction (helps with large files and slower systems)
-; NSIS_MAX_STRLEN is already defined by NSIS itself, do not redefine it
-; Use increased buffer size if needed via other means
 
 ; Set better error handling for large files
 SetOverwrite on
 SetDateSave on
+
+; Note: Compression is handled by electron-builder's compression setting in package.json
+; Do not set SetCompressor here as it conflicts with electron-builder's internal macros

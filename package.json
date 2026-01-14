@@ -152,7 +152,7 @@
 			"differentialPackage": false,
 			"include": "build/installer.nsh"
 		},
-		"compression": "normal",
+		"compression": "maximum",
 		"mac": {
 			"target": "dmg",
 			"icon": "images/icons/main.png",
