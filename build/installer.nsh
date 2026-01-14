@@ -5,8 +5,17 @@
 ; even though the files are fine. This is a known issue with large electron apps.
 CRCCheck off
 
-; Set solid compression to improve reliability
+; Use solid compression for better reliability and smaller size with large files
 SetCompressor /SOLID lzma
+SetCompressorDictSize 64
 
-; Increase timeout for extraction (helps with large files)
-!define NSIS_MAX_STRLEN 8192
+; Set data block optimization for better performance
+SetDatablockOptimize on
+
+; Increase timeout for extraction (helps with large files and slower systems)
+; NSIS_MAX_STRLEN is already defined by NSIS itself, do not redefine it
+; Use increased buffer size if needed via other means
+
+; Set better error handling for large files
+SetOverwrite on
+SetDateSave on
