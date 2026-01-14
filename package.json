@@ -147,7 +147,8 @@
 			"oneClick": true,
 			"perMachine": false,
 			"allowElevation": true,
-			"deleteAppDataOnUninstall": false
+			"deleteAppDataOnUninstall": false,
+			"compression": "maximum"
 		},
 		"mac": {
 			"target": "dmg",
