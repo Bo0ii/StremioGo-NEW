@@ -3137,6 +3137,10 @@ function cleanupPartyVideoSync(): void {
     partyService.stopSync();
     partyVideoElement = null;
     partyVideoListenersActive = false;
+
+    // Reset stream sync state to allow syncing to new videos
+    // Don't clear lastSyncedStreamUrl here - keep it for comparison
+    logger.info('[Party] Video sync cleanup complete');
 }
 
 /**
@@ -3150,10 +3154,18 @@ function setupPartyListeners(): void {
         // Handle stream update commands (navigate to same video)
         if (command === 'updateStream') {
             const streamUrl = data?.url;
-            if (streamUrl && streamUrl !== lastSyncedStreamUrl && streamUrl !== location.hash) {
-                logger.info('[Party] Received stream sync from host:', streamUrl);
+
+            // Always sync to host's stream unless we're already there
+            if (streamUrl && streamUrl !== location.hash) {
+                logger.info('[Party] Host changed stream - syncing to:', streamUrl);
+                console.log('[Party] Previous stream:', lastSyncedStreamUrl);
+                console.log('[Party] New stream:', streamUrl);
+                console.log('[Party] Current location:', location.hash);
+
                 lastSyncedStreamUrl = streamUrl;
                 location.hash = streamUrl;
+            } else if (streamUrl === location.hash) {
+                logger.info('[Party] Already at host stream:', streamUrl);
             }
             return;
         }
@@ -3410,17 +3422,24 @@ document.addEventListener('keydown', (e) => {
  */
 function syncStreamToParty(): void {
     try {
-        if (!partyService.connected || !partyService.room || !partyService.isHost) {
+        if (!partyService.connected || !partyService.room) {
+            logger.info('[Party] Not syncing stream - not in party');
+            return;
+        }
+
+        if (!partyService.isHost) {
+            logger.info('[Party] Not syncing stream - not a host');
             return;
         }
 
         logger.info('[Party] Host navigated to player - syncing stream...');
+        console.log('[Party] Broadcasting stream to', partyService.room.members.length, 'members');
 
         const hash = location.hash;
         const playerMatch = hash.match(/#\/player\/([^/]+)\/([^/]+)(?:\/(.+))?/);
 
         if (!playerMatch) {
-            logger.warn('[Party] Could not parse player URL for sync');
+            logger.warn('[Party] Could not parse player URL for sync:', hash);
             return;
         }
 
@@ -3433,7 +3452,8 @@ function syncStreamToParty(): void {
             episodeId: episodeId || null
         });
 
-        logger.info('[Party] Stream update broadcast to party');
+        logger.info('[Party] Stream update broadcast to party:', hash);
+        console.log('[Party] Broadcast complete - participants should navigate to:', hash);
     } catch (error) {
         logger.error('[Party] Error syncing stream:', error);
     }
