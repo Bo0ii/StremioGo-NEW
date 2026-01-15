@@ -218,16 +218,17 @@ class VideoFilter {
                     <!-- Denoise using Gaussian blur -->
                     <feGaussianBlur id="denoise-blur" stdDeviation="0" result="denoised"/>
 
-                    <!-- Edge detection for edge enhancement -->
-                    <feConvolveMatrix id="edge-detect" order="3" preserveAlpha="true" in="denoised" result="edges"
-                        kernelMatrix="-1 -1 -1 -1 8 -1 -1 -1 -1"/>
-
                     <!-- Sharpen using convolution matrix -->
                     <feConvolveMatrix id="sharpen-matrix" order="3" preserveAlpha="true" in="denoised" result="sharpened"
-                        kernelMatrix="0 0 0 0 1 0 0 0 0"/>
+                        kernelMatrix="0 0 0 0 1 0 0 0"/>
 
-                    <!-- Blend edges with sharpened image for edge enhancement -->
-                    <feBlend id="edge-blend" mode="normal" in="edges" in2="sharpened" result="edge-enhanced"/>
+                    <!-- Edge detection for edge enhancement (subtle) -->
+                    <feConvolveMatrix id="edge-detect" order="3" preserveAlpha="true" in="sharpened" result="edges"
+                        kernelMatrix="0 -1 0 -1 5 -1 0 -1 0"/>
+
+                    <!-- Composite edges onto the sharpened image (add mode) -->
+                    <feComposite id="edge-blend" operator="arithmetic" in="edges" in2="sharpened"
+                        k1="0" k2="0" k3="1" k4="0" result="edge-enhanced"/>
 
                     <!-- Color temperature adjustment using color matrix -->
                     <feColorMatrix id="temperature-matrix" type="matrix" in="edge-enhanced"
@@ -293,13 +294,15 @@ class VideoFilter {
         const edgeBlend = document.getElementById('edge-blend');
         if (!edgeBlend) return;
 
-        // intensity 0-100 maps to opacity 0-1
-        // When intensity is 0, no edge enhancement (normal blend)
-        // When intensity is 100, maximum edge enhancement
-        const opacity = intensity / 100;
+        // intensity 0-100 controls how much edge detail is added
+        // feComposite arithmetic: result = k1*i1*i2 + k2*i1 + k3*i2 + k4
+        // i1 = edges, i2 = sharpened
+        // We want: result = (intensity * edges) + (1 * sharpened)
 
-        // Adjust edge detection strength by modifying the blend opacity
-        edgeBlend.setAttribute('opacity', opacity.toString());
+        const edgeContribution = intensity / 300; // 0 to 0.33 (subtle enhancement)
+
+        // k1=0 (no multiplication), k2=edgeContribution (edges), k3=1 (base image), k4=0 (no offset)
+        edgeBlend.setAttribute('k2', edgeContribution.toString());
     }
 
     private applyFilters(): void {
