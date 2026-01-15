@@ -4,10 +4,11 @@ import Updater from "../../core/Updater";
 import { IPC_CHANNELS } from "../../constants";
 import { ipcRenderer } from "electron";
 
-type UpdateState = 'idle' | 'downloading' | 'installing' | 'completed' | 'error';
+type UpdateState = 'idle' | 'downloading' | 'ready_to_install' | 'restarting' | 'error';
 
 let updateState: UpdateState = 'idle';
 let installerPath: string | null = null;
+let countdownInterval: NodeJS.Timeout | null = null;
 
 export async function getUpdateModalTemplate(): Promise<string> {
     let template = TemplateCache.load(__dirname, 'update-modal');
@@ -48,27 +49,27 @@ function initializeUpdateModal(): void {
         return;
     }
 
-    // Setup Install button click handler
+    // Setup Install/Restart button click handler
     installButton.addEventListener('click', async () => {
         if (updateState === 'idle') {
             await startDownload();
-        } else if (updateState === 'completed') {
-            // After download is complete, start installation
-            await startInstallation();
+        } else if (updateState === 'ready_to_install') {
+            // User clicked Restart button - start countdown and installation
+            startRestartCountdown();
         }
     });
 
-    // Setup Ignore button - only allow closing if not downloading/installing
+    // Setup Ignore button - only allow closing if not downloading/restarting
     ignoreButton.addEventListener('click', () => {
-        if (updateState !== 'downloading' && updateState !== 'installing') {
+        if (updateState !== 'downloading' && updateState !== 'restarting') {
             cleanupAndClose();
         }
     });
 
-    // Setup Close button - only allow closing if not downloading/installing
+    // Setup Close button - only allow closing if not downloading/restarting
     if (closeButton) {
         closeButton.onclick = () => {
-            if (updateState !== 'downloading' && updateState !== 'installing') {
+            if (updateState !== 'downloading' && updateState !== 'restarting') {
                 cleanupAndClose();
             }
         };
@@ -82,14 +83,6 @@ function initializeUpdateModal(): void {
     ipcRenderer.on(IPC_CHANNELS.UPDATE_DOWNLOAD_COMPLETE, (_: any, data: { installerPath: string }) => {
         installerPath = data.installerPath;
         onDownloadComplete();
-    });
-
-    ipcRenderer.on(IPC_CHANNELS.UPDATE_INSTALL_START, () => {
-        onInstallStart();
-    });
-
-    ipcRenderer.on(IPC_CHANNELS.UPDATE_INSTALL_COMPLETE, () => {
-        onInstallComplete();
     });
 
     ipcRenderer.on(IPC_CHANNELS.UPDATE_ERROR, (_: any, error: { stage: string; message: string }) => {
@@ -127,13 +120,13 @@ async function startDownload(): Promise<void> {
     }
 }
 
-async function startInstallation(): Promise<void> {
+function startRestartCountdown(): void {
     if (!installerPath) {
         onUpdateError('install', 'Installer path not found. Please try downloading again.');
         return;
     }
 
-    updateState = 'installing';
+    updateState = 'restarting';
 
     const installButton = document.getElementById('updateInstallButton');
     const ignoreButton = document.getElementById('updateIgnoreButton');
@@ -142,23 +135,65 @@ async function startInstallation(): Promise<void> {
 
     if (!installButton || !ignoreButton || !statusText || !detailsText) return;
 
-    // Update UI for installing state
+    // Disable buttons during countdown
     (installButton as HTMLElement).style.opacity = '0.6';
     (installButton as HTMLElement).style.pointerEvents = 'none';
     (ignoreButton as HTMLElement).style.opacity = '0.6';
     (ignoreButton as HTMLElement).style.pointerEvents = 'none';
 
-    // All platforms now have automatic installation
-    statusText.textContent = 'Installing update...';
-    detailsText.textContent = 'The app will close and reopen automatically with the new version. Please wait...';
+    statusText.textContent = 'Preparing to restart...';
+    detailsText.textContent = 'The app will close and the installer will continue automatically.';
+
+    // Start countdown from 10
+    let countdown = 10;
+    const buttonLabel = installButton.querySelector('.label-wbfsE');
+
+    const updateCountdown = () => {
+        if (buttonLabel) {
+            buttonLabel.textContent = `Restarting (${countdown})`;
+        }
+        detailsText.textContent = `The app will close in ${countdown} seconds and the installer will continue automatically.`;
+
+        countdown--;
+
+        if (countdown < 0) {
+            // Countdown finished - start installation
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            performInstallation();
+        }
+    };
+
+    // Update immediately
+    updateCountdown();
+
+    // Then update every second
+    countdownInterval = setInterval(updateCountdown, 1000);
+}
+
+async function performInstallation(): Promise<void> {
+    const statusText = document.getElementById('updateStatusText');
+    const detailsText = document.getElementById('updateDetailsText');
+
+    if (statusText && detailsText) {
+        statusText.textContent = 'Closing application...';
+        detailsText.textContent = 'The installer will continue automatically. Please wait...';
+    }
 
     try {
+        // Tell main process to start installation - app will quit
         const result = await ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL_START, installerPath);
         if (!result.success) {
             throw new Error(result.error || 'Installation failed');
         }
-        // Note: For all platforms, the app will quit before we get here
+        // Note: App will quit before we get here
     } catch (error) {
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
         onUpdateError('install', (error as Error).message);
     }
 }
@@ -194,7 +229,7 @@ function updateDownloadProgress(progress: number, bytesDownloaded: number, total
 }
 
 function onDownloadComplete(): void {
-    updateState = 'completed';
+    updateState = 'ready_to_install';
 
     const installButton = document.getElementById('updateInstallButton');
     const ignoreButton = document.getElementById('updateIgnoreButton');
@@ -206,77 +241,32 @@ function onDownloadComplete(): void {
 
     progressBar.style.width = '100%';
 
-    // All platforms now have automatic installation and restart
-    statusText.textContent = 'Download complete! Ready to install.';
-    detailsText.textContent = 'Click Install to automatically apply the update. The app will close and reopen with the new version.';
+    // Download complete - ready to restart and install
+    statusText.textContent = 'Download complete! Ready to restart.';
+    detailsText.textContent = 'Click Restart to close the app and continue installation. The app will reopen automatically with the new version.';
 
-    // Update button to show "Install"
+    // Update button to show "Restart"
     const buttonLabel = installButton.querySelector('.label-wbfsE');
     if (buttonLabel) {
-        buttonLabel.textContent = 'Install';
+        buttonLabel.textContent = 'Restart';
     }
-    installButton.setAttribute('title', 'Install Update');
+    installButton.setAttribute('title', 'Restart and Install');
     (installButton as HTMLElement).style.opacity = '1';
     (installButton as HTMLElement).style.pointerEvents = 'auto';
 
     // Re-enable ignore button
     (ignoreButton as HTMLElement).style.opacity = '1';
     (ignoreButton as HTMLElement).style.pointerEvents = 'auto';
-
-    // For macOS, auto-install after download (to show progress immediately)
-    const platform = process.platform;
-    if (platform === 'darwin' && installerPath) {
-        setTimeout(() => {
-            ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL_START, installerPath).catch((error: Error) => {
-                onUpdateError('install', error.message);
-            });
-        }, 500);
-    }
-}
-
-function onInstallStart(): void {
-    const statusText = document.getElementById('updateStatusText');
-    const detailsText = document.getElementById('updateDetailsText');
-
-    if (!statusText || !detailsText) return;
-
-    // This is only reached on macOS (Windows/Linux quit before this event)
-    statusText.textContent = 'Installing update...';
-    detailsText.textContent = 'Please wait while the update is installed...';
-}
-
-function onInstallComplete(): void {
-    // This is only reached on macOS (Windows/Linux quit before this event)
-    updateState = 'completed';
-
-    const installButton = document.getElementById('updateInstallButton');
-    const ignoreButton = document.getElementById('updateIgnoreButton');
-    const statusText = document.getElementById('updateStatusText');
-    const detailsText = document.getElementById('updateDetailsText');
-    const progressBar = document.getElementById('updateProgressBar');
-
-    if (!installButton || !ignoreButton || !statusText || !detailsText || !progressBar) return;
-
-    // Update UI for completed state
-    progressBar.style.width = '100%';
-    statusText.textContent = 'Installation complete!';
-    detailsText.textContent = 'Click Restart to apply the update.';
-
-    // Update button to "Restart"
-    const buttonLabel = installButton.querySelector('.label-wbfsE');
-    if (buttonLabel) {
-        buttonLabel.textContent = 'Restart';
-    }
-    installButton.setAttribute('title', 'Restart');
-    (installButton as HTMLElement).style.opacity = '1';
-    (installButton as HTMLElement).style.pointerEvents = 'auto';
-
-    // Re-enable ignore button but hide it since we want to encourage restart
-    (ignoreButton as HTMLElement).style.opacity = '0.5';
 }
 
 function onUpdateError(stage: string, message: string): void {
     updateState = 'error';
+
+    // Clear countdown if active
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
 
     const installButton = document.getElementById('updateInstallButton');
     const ignoreButton = document.getElementById('updateIgnoreButton');
@@ -327,11 +317,15 @@ function onUpdateError(stage: string, message: string): void {
 // For Windows/Linux, the app quits and installer/script handles the restart
 
 function cleanupAndClose(): void {
+    // Clear countdown if active
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+
     // Remove IPC listeners to prevent memory leaks
     ipcRenderer.removeAllListeners(IPC_CHANNELS.UPDATE_DOWNLOAD_PROGRESS);
     ipcRenderer.removeAllListeners(IPC_CHANNELS.UPDATE_DOWNLOAD_COMPLETE);
-    ipcRenderer.removeAllListeners(IPC_CHANNELS.UPDATE_INSTALL_START);
-    ipcRenderer.removeAllListeners(IPC_CHANNELS.UPDATE_INSTALL_COMPLETE);
     ipcRenderer.removeAllListeners(IPC_CHANNELS.UPDATE_ERROR);
 
     const modalContainer = document.getElementById('updateModalContainer');

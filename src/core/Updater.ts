@@ -471,36 +471,40 @@ class Updater {
                 this.logger.info(`Installing update on Windows: ${installerPath}`);
 
                 try {
-                    // Launch installer silently with auto-run flag
-                    // /S = Silent mode
-                    // --updated = Special flag to launch app after install (passed to the new version)
-                    const ps = `Start-Process -FilePath "${installerPath}" -ArgumentList '/S' -Verb RunAs -Wait`;
+                    // Launch installer in detached mode so it continues after app quits
+                    // /S = Silent mode (no UI)
+                    // --force-run = Launch app after installation (Electron Builder NSIS feature)
+                    //
+                    // We use a PowerShell script that:
+                    // 1. Waits for this process to fully exit
+                    // 2. Launches the installer
+                    // 3. Detaches immediately so PowerShell doesn't block
+                    const psScript = `
+Start-Sleep -Seconds 1
+Start-Process -FilePath "${installerPath}" -ArgumentList "/S", "--force-run" -Verb RunAs
+`;
 
-                    // Launch installer and wait for it to complete
-                    const execPromise = execFileAsync("powershell.exe", [
+                    // Launch PowerShell in the background - it will run the installer after we quit
+                    // We don't wait for it to complete, just fire and forget
+                    execFileAsync("powershell.exe", [
                         "-ExecutionPolicy", "Bypass",
                         "-NoProfile",
-                        "-Command", ps
+                        "-WindowStyle", "Hidden",
+                        "-Command", psScript
                     ], {
                         windowsHide: true,
+                    }).catch((error) => {
+                        this.logger.error(`PowerShell script error: ${(error as Error).message}`);
                     });
 
-                    this.logger.info("Windows installer launched silently, app will now exit");
+                    this.logger.info("Windows installer will launch after app exits");
 
-                    // Give the installer process time to start (500ms), then quit the app
-                    // The installer needs the app to quit before it can replace files
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                    // Give PowerShell time to start (100ms), then quit
+                    await new Promise(resolve => setTimeout(resolve, 100));
 
                     // Quit the app so installer can replace files
-                    // The installer will auto-launch the new version after installation completes
                     if (app) {
-                        // Don't wait for installer to finish - just quit immediately
                         app.quit();
-
-                        // Background: Let the promise resolve/reject in the background
-                        execPromise.catch((error) => {
-                            this.logger.error(`Installer background error: ${(error as Error).message}`);
-                        });
                     }
                 } catch (error) {
                     this.logger.error(`Failed to launch Windows installer: ${(error as Error).message}`);
@@ -512,11 +516,35 @@ class Updater {
                 // Mount DMG, install, and restart on macOS
                 this.logger.info(`Installing update on macOS: ${installerPath}`);
                 const volume = "/Volumes/StreamGo";
+                const installPath = "/Applications/StreamGo.app";
 
                 try {
+                    // Verify DMG file exists and is valid
+                    if (!existsSync(installerPath)) {
+                        throw new Error(`Installer file not found: ${installerPath}`);
+                    }
+
+                    const fileStats = statSync(installerPath);
+                    if (fileStats.size < 1024 * 1024) {
+                        throw new Error(`Installer file is too small (${fileStats.size} bytes), likely corrupted`);
+                    }
+
+                    this.logger.info(`Installer file verified: ${fileStats.size} bytes`);
+
+                    // Unmount any existing volume first
+                    try {
+                        await execFileAsync("hdiutil", ["detach", volume, "-force"]);
+                        this.logger.info("Unmounted existing volume");
+                    } catch (error) {
+                        // Volume not mounted, that's fine
+                    }
+
                     // Mount the DMG
                     this.logger.info("Mounting DMG...");
-                    await execFileAsync("hdiutil", ["attach", installerPath, "-mountpoint", volume, "-nobrowse"]);
+                    await execFileAsync("hdiutil", ["attach", installerPath, "-mountpoint", volume, "-nobrowse", "-noautoopen"]);
+
+                    // Wait for mount to complete
+                    await new Promise(resolve => setTimeout(resolve, 500));
 
                     // Find the .app bundle in the mounted volume
                     const appPath = `${volume}/StreamGo.app`;
@@ -524,22 +552,27 @@ class Updater {
                         throw new Error("StreamGo.app not found in DMG");
                     }
 
+                    this.logger.info(`Found app at: ${appPath}`);
+
                     // Remove old version if it exists
-                    const installPath = "/Applications/StreamGo.app";
                     if (existsSync(installPath)) {
                         this.logger.info("Removing old version...");
                         await execFileAsync("rm", ["-rf", installPath]);
                     }
 
-                    // Copy new version to Applications
+                    // Copy new version to Applications using ditto for better reliability
                     this.logger.info("Copying new version to Applications...");
-                    await execFileAsync("cp", ["-R", appPath, "/Applications/"]);
+                    await execFileAsync("ditto", [appPath, installPath]);
+
+                    this.logger.info("Copy completed successfully");
 
                     // Unmount the DMG
                     this.logger.info("Unmounting DMG...");
-                    await execFileAsync("hdiutil", ["detach", volume]).catch((error) => {
+                    try {
+                        await execFileAsync("hdiutil", ["detach", volume, "-force"]);
+                    } catch (error) {
                         this.logger.warn(`Failed to detach volume: ${(error as Error).message}`);
-                    });
+                    }
 
                     // Clean up the downloaded DMG
                     try {
@@ -550,25 +583,30 @@ class Updater {
                     }
 
                     // Restart the app with the new version
-                    this.logger.info("Restarting app with new version...");
+                    this.logger.info("Launching new version...");
                     if (app) {
-                        // Use 'open' command to launch the new version and then quit
+                        // Use 'open' command to launch the new version
                         execFileAsync("open", ["-n", installPath]).catch((error) => {
                             this.logger.error(`Failed to launch new version: ${(error as Error).message}`);
                         });
 
-                        // Wait a moment for the new instance to start, then quit this one
-                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        // Wait for the new instance to start, then quit this one
+                        await new Promise(resolve => setTimeout(resolve, 1500));
                         app.quit();
                     }
 
-                    return; // Skip the cleanup at the end since we already handled it
+                    return;
                 } catch (error) {
                     // Clean up on error
                     this.logger.error(`macOS installation failed: ${(error as Error).message}`);
-                    await execFileAsync("hdiutil", ["detach", volume]).catch(() => {
-                        // Ignore errors when detaching
-                    });
+
+                    // Try to unmount the volume
+                    try {
+                        await execFileAsync("hdiutil", ["detach", volume, "-force"]);
+                    } catch (unmountError) {
+                        this.logger.warn(`Failed to unmount volume during error cleanup: ${(unmountError as Error).message}`);
+                    }
+
                     throw error;
                 }
             }
