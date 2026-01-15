@@ -145,8 +145,8 @@ app.commandLine.appendSwitch('enable-async-dns');
 async function createWindow() {
     // Get the icon path - use different paths for packaged vs development
     const iconPath = app.isPackaged
-        ? join(process.resourcesPath, "images", "mainnew.png")
-        : join(__dirname, "..", "..", "images", "mainnew.png");
+        ? join(process.resourcesPath, "images", "icon.png")
+        : join(__dirname, "..", "..", "images", "icon.png");
     
     // Create native image from the icon path
     const appIcon = nativeImage.createFromPath(iconPath);

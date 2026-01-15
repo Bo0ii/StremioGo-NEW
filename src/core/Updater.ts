@@ -7,7 +7,7 @@ import { URLS } from "../constants";
 import https from "https";
 import { createWriteStream, unlinkSync, existsSync, writeFileSync, statSync } from "fs";
 import { promisify } from "util";
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 
 // Try to import app, but handle if we're in renderer process
 let app: typeof import("electron").app | undefined;
@@ -471,36 +471,51 @@ class Updater {
                 this.logger.info(`Installing update on Windows: ${installerPath}`);
 
                 try {
-                    // Launch installer in detached mode so it continues after app quits
-                    // /S = Silent mode (no UI)
-                    // --force-run = Launch app after installation (Electron Builder NSIS feature)
-                    //
-                    // We use a PowerShell script that:
-                    // 1. Waits for this process to fully exit
-                    // 2. Launches the installer
-                    // 3. Detaches immediately so PowerShell doesn't block
-                    const psScript = `
-Start-Sleep -Seconds 1
-Start-Process -FilePath "${installerPath}" -ArgumentList "/S", "--force-run" -Verb RunAs
+                    if (!app) {
+                        throw new Error("App not available - cannot create update script");
+                    }
+
+                    // Create a batch file that will:
+                    // 1. Wait for this process to exit (using process ID)
+                    // 2. Launch the installer
+                    // 3. Delete itself
+                    const currentPid = process.pid;
+                    const batchContent = `@echo off
+REM StreamGo Update Helper
+echo Waiting for StreamGo to exit...
+:WAIT
+tasklist /FI "PID eq ${currentPid}" 2>NUL | find "${currentPid}" >NUL
+if %ERRORLEVEL% == 0 (
+    timeout /t 1 /nobreak >NUL
+    goto WAIT
+)
+
+echo Launching installer...
+start "" "${installerPath}" /S --force-run
+
+echo Cleaning up...
+del "%~f0"
+exit
 `;
 
-                    // Launch PowerShell in the background - it will run the installer after we quit
-                    // We don't wait for it to complete, just fire and forget
-                    execFileAsync("powershell.exe", [
-                        "-ExecutionPolicy", "Bypass",
-                        "-NoProfile",
-                        "-WindowStyle", "Hidden",
-                        "-Command", psScript
-                    ], {
+                    const batchPath = join(app.getPath("temp"), "streamgo-update.bat");
+                    writeFileSync(batchPath, batchContent, { encoding: 'utf8' });
+                    this.logger.info(`Created update batch file: ${batchPath}`);
+
+                    // Launch the batch file in a detached, hidden window
+                    const batchProcess = spawn("cmd.exe", ["/c", batchPath], {
+                        detached: true,
+                        stdio: 'ignore',
                         windowsHide: true,
-                    }).catch((error) => {
-                        this.logger.error(`PowerShell script error: ${(error as Error).message}`);
                     });
 
-                    this.logger.info("Windows installer will launch after app exits");
+                    // Unref so the child can continue after parent exits
+                    batchProcess.unref();
 
-                    // Give PowerShell time to start (100ms), then quit
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    this.logger.info("Update batch script launched, app will now exit");
+
+                    // Give batch file time to start
+                    await new Promise(resolve => setTimeout(resolve, 500));
 
                     // Quit the app so installer can replace files
                     if (app) {
@@ -515,10 +530,12 @@ Start-Process -FilePath "${installerPath}" -ArgumentList "/S", "--force-run" -Ve
             case "darwin": {
                 // Mount DMG, install, and restart on macOS
                 this.logger.info(`Installing update on macOS: ${installerPath}`);
-                const volume = "/Volumes/StreamGo";
-                const installPath = "/Applications/StreamGo.app";
 
                 try {
+                    if (!app) {
+                        throw new Error("App not available - cannot create update script");
+                    }
+
                     // Verify DMG file exists and is valid
                     if (!existsSync(installerPath)) {
                         throw new Error(`Installer file not found: ${installerPath}`);
@@ -531,82 +548,96 @@ Start-Process -FilePath "${installerPath}" -ArgumentList "/S", "--force-run" -Ve
 
                     this.logger.info(`Installer file verified: ${fileStats.size} bytes`);
 
-                    // Unmount any existing volume first
-                    try {
-                        await execFileAsync("hdiutil", ["detach", volume, "-force"]);
-                        this.logger.info("Unmounted existing volume");
-                    } catch (error) {
-                        // Volume not mounted, that's fine
-                    }
+                    // Create a shell script that will:
+                    // 1. Wait for this process to exit
+                    // 2. Mount the DMG
+                    // 3. Copy to Applications
+                    // 4. Unmount the DMG
+                    // 5. Launch the new version
+                    // 6. Delete the DMG and itself
+                    const currentPid = process.pid;
+                    const volume = "/Volumes/StreamGo";
+                    const installPath = "/Applications/StreamGo.app";
+                    const appPath = `${volume}/StreamGo.app`;
 
-                    // Mount the DMG
-                    this.logger.info("Mounting DMG...");
-                    await execFileAsync("hdiutil", ["attach", installerPath, "-mountpoint", volume, "-nobrowse", "-noautoopen"]);
+                    const shellScript = `#!/bin/bash
+# StreamGo Update Helper for macOS
 
-                    // Wait for mount to complete
+echo "Waiting for StreamGo to exit (PID ${currentPid})..."
+while kill -0 ${currentPid} 2>/dev/null; do
+    sleep 1
+done
+
+echo "Unmounting any existing volume..."
+hdiutil detach "${volume}" -force 2>/dev/null || true
+
+echo "Mounting DMG..."
+if ! hdiutil attach "${installerPath}" -mountpoint "${volume}" -nobrowse -noautoopen; then
+    echo "Error: Failed to mount DMG"
+    exit 1
+fi
+
+echo "Waiting for mount to complete..."
+sleep 2
+
+if [ ! -d "${appPath}" ]; then
+    echo "Error: StreamGo.app not found in DMG"
+    hdiutil detach "${volume}" -force 2>/dev/null || true
+    exit 1
+fi
+
+echo "Removing old version..."
+rm -rf "${installPath}" 2>/dev/null || true
+
+echo "Copying new version to Applications..."
+if ! ditto "${appPath}" "${installPath}"; then
+    echo "Error: Failed to copy app"
+    hdiutil detach "${volume}" -force 2>/dev/null || true
+    exit 1
+fi
+
+echo "Unmounting DMG..."
+hdiutil detach "${volume}" -force 2>/dev/null || true
+
+echo "Cleaning up installer..."
+rm -f "${installerPath}"
+
+echo "Launching new version..."
+open -n "${installPath}"
+
+echo "Cleaning up script..."
+rm -f "$0"
+
+echo "Update complete!"
+exit 0
+`;
+
+                    const scriptPath = join(app.getPath("temp"), "streamgo-update.sh");
+                    writeFileSync(scriptPath, shellScript, { encoding: 'utf8', mode: 0o755 });
+                    this.logger.info(`Created update shell script: ${scriptPath}`);
+
+                    // Launch the shell script in the background
+                    const shellProcess = spawn("/bin/bash", [scriptPath], {
+                        detached: true,
+                        stdio: 'ignore',
+                    });
+
+                    // Unref so the child can continue after parent exits
+                    shellProcess.unref();
+
+                    this.logger.info("Update shell script launched, app will now exit");
+
+                    // Give script time to start
                     await new Promise(resolve => setTimeout(resolve, 500));
 
-                    // Find the .app bundle in the mounted volume
-                    const appPath = `${volume}/StreamGo.app`;
-                    if (!existsSync(appPath)) {
-                        throw new Error("StreamGo.app not found in DMG");
-                    }
-
-                    this.logger.info(`Found app at: ${appPath}`);
-
-                    // Remove old version if it exists
-                    if (existsSync(installPath)) {
-                        this.logger.info("Removing old version...");
-                        await execFileAsync("rm", ["-rf", installPath]);
-                    }
-
-                    // Copy new version to Applications using ditto for better reliability
-                    this.logger.info("Copying new version to Applications...");
-                    await execFileAsync("ditto", [appPath, installPath]);
-
-                    this.logger.info("Copy completed successfully");
-
-                    // Unmount the DMG
-                    this.logger.info("Unmounting DMG...");
-                    try {
-                        await execFileAsync("hdiutil", ["detach", volume, "-force"]);
-                    } catch (error) {
-                        this.logger.warn(`Failed to detach volume: ${(error as Error).message}`);
-                    }
-
-                    // Clean up the downloaded DMG
-                    try {
-                        unlinkSync(installerPath);
-                        this.logger.info("Cleaned up installer file");
-                    } catch (error) {
-                        this.logger.warn(`Failed to delete installer: ${(error as Error).message}`);
-                    }
-
-                    // Restart the app with the new version
-                    this.logger.info("Launching new version...");
+                    // Quit the app so the script can do its work
                     if (app) {
-                        // Use 'open' command to launch the new version
-                        execFileAsync("open", ["-n", installPath]).catch((error) => {
-                            this.logger.error(`Failed to launch new version: ${(error as Error).message}`);
-                        });
-
-                        // Wait for the new instance to start, then quit this one
-                        await new Promise(resolve => setTimeout(resolve, 1500));
                         app.quit();
                     }
 
                     return;
                 } catch (error) {
-                    // Clean up on error
                     this.logger.error(`macOS installation failed: ${(error as Error).message}`);
-
-                    // Try to unmount the volume
-                    try {
-                        await execFileAsync("hdiutil", ["detach", volume, "-force"]);
-                    } catch (unmountError) {
-                        this.logger.warn(`Failed to unmount volume during error cleanup: ${(unmountError as Error).message}`);
-                    }
-
                     throw error;
                 }
             }
