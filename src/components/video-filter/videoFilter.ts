@@ -9,6 +9,10 @@ interface FilterSettings {
     contrast: number;
     saturation: number;
     temperature: number;
+    highlights: number;
+    shadows: number;
+    denoise: number;
+    edgeEnhance: number;
 }
 
 // Default accent color (purple) - used when user hasn't set a custom color
@@ -72,6 +76,10 @@ class VideoFilter {
             contrast: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_CONTRAST) || PLAYER_DEFAULTS.VIDEO_FILTER_CONTRAST.toString()),
             saturation: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_SATURATION) || PLAYER_DEFAULTS.VIDEO_FILTER_SATURATION.toString()),
             temperature: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_TEMPERATURE) || PLAYER_DEFAULTS.VIDEO_FILTER_TEMPERATURE.toString()),
+            highlights: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_HIGHLIGHTS) || PLAYER_DEFAULTS.VIDEO_FILTER_HIGHLIGHTS.toString()),
+            shadows: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_SHADOWS) || PLAYER_DEFAULTS.VIDEO_FILTER_SHADOWS.toString()),
+            denoise: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_DENOISE) || PLAYER_DEFAULTS.VIDEO_FILTER_DENOISE.toString()),
+            edgeEnhance: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_EDGE_ENHANCE) || PLAYER_DEFAULTS.VIDEO_FILTER_EDGE_ENHANCE.toString()),
         };
     }
 
@@ -81,6 +89,10 @@ class VideoFilter {
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_CONTRAST, this.settings.contrast.toString());
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_SATURATION, this.settings.saturation.toString());
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_TEMPERATURE, this.settings.temperature.toString());
+        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_HIGHLIGHTS, this.settings.highlights.toString());
+        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_SHADOWS, this.settings.shadows.toString());
+        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_DENOISE, this.settings.denoise.toString());
+        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_EDGE_ENHANCE, this.settings.edgeEnhance.toString());
     }
 
     public init(): void {
@@ -125,6 +137,10 @@ class VideoFilter {
         template = template.replace(/\{\{\s*contrast\s*\}\}/g, this.settings.contrast.toString());
         template = template.replace(/\{\{\s*saturation\s*\}\}/g, this.settings.saturation.toString());
         template = template.replace(/\{\{\s*temperature\s*\}\}/g, this.settings.temperature.toString());
+        template = template.replace(/\{\{\s*highlights\s*\}\}/g, this.settings.highlights.toString());
+        template = template.replace(/\{\{\s*shadows\s*\}\}/g, this.settings.shadows.toString());
+        template = template.replace(/\{\{\s*denoise\s*\}\}/g, this.settings.denoise.toString());
+        template = template.replace(/\{\{\s*edgeEnhance\s*\}\}/g, this.settings.edgeEnhance.toString());
 
         // Replace accent color placeholders
         template = template.replace(/\{\{\s*accentColor\s*\}\}/g, accentColor);
@@ -191,8 +207,7 @@ class VideoFilter {
         // Remove existing SVG filter if present
         document.getElementById(this.svgFilterId)?.parentElement?.remove();
 
-        // Create SVG element with sharpen filter
-        // Using a 3x3 convolution matrix for sharpening
+        // Create SVG element with advanced filters
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('width', '0');
         svg.setAttribute('height', '0');
@@ -200,11 +215,22 @@ class VideoFilter {
         svg.innerHTML = `
             <defs>
                 <filter id="${this.svgFilterId}" color-interpolation-filters="sRGB">
+                    <!-- Denoise using Gaussian blur -->
+                    <feGaussianBlur id="denoise-blur" stdDeviation="0" result="denoised"/>
+
+                    <!-- Edge detection for edge enhancement -->
+                    <feConvolveMatrix id="edge-detect" order="3" preserveAlpha="true" in="denoised" result="edges"
+                        kernelMatrix="-1 -1 -1 -1 8 -1 -1 -1 -1"/>
+
                     <!-- Sharpen using convolution matrix -->
-                    <feConvolveMatrix id="sharpen-matrix" order="3" preserveAlpha="true"
+                    <feConvolveMatrix id="sharpen-matrix" order="3" preserveAlpha="true" in="denoised" result="sharpened"
                         kernelMatrix="0 0 0 0 1 0 0 0 0"/>
+
+                    <!-- Blend edges with sharpened image for edge enhancement -->
+                    <feBlend id="edge-blend" mode="normal" in="edges" in2="sharpened" result="edge-enhanced"/>
+
                     <!-- Color temperature adjustment using color matrix -->
-                    <feColorMatrix id="temperature-matrix" type="matrix"
+                    <feColorMatrix id="temperature-matrix" type="matrix" in="edge-enhanced"
                         values="1 0 0 0 0
                                 0 1 0 0 0
                                 0 0 1 0 0
@@ -254,15 +280,44 @@ class VideoFilter {
         tempMatrix.setAttribute('values', values);
     }
 
+    private updateDenoiseBlur(intensity: number): void {
+        const denoiseBlur = document.getElementById('denoise-blur');
+        if (!denoiseBlur) return;
+
+        // intensity 0-100 maps to blur standard deviation 0-2
+        const stdDev = (intensity / 100) * 2;
+        denoiseBlur.setAttribute('stdDeviation', stdDev.toString());
+    }
+
+    private updateEdgeEnhancement(intensity: number): void {
+        const edgeBlend = document.getElementById('edge-blend');
+        if (!edgeBlend) return;
+
+        // intensity 0-100 maps to opacity 0-1
+        // When intensity is 0, no edge enhancement (normal blend)
+        // When intensity is 100, maximum edge enhancement
+        const opacity = intensity / 100;
+
+        // Adjust edge detection strength by modifying the blend opacity
+        edgeBlend.setAttribute('opacity', opacity.toString());
+    }
+
     private applyFilters(): void {
         if (!this.video) return;
 
-        // Build CSS filter string for brightness, contrast, saturation
+        // Build CSS filter string for brightness, contrast, saturation, highlights, shadows
         const cssFilters: string[] = [];
 
-        // Brightness (100 = normal)
-        if (this.settings.brightness !== 100) {
-            cssFilters.push(`brightness(${this.settings.brightness / 100})`);
+        // Base brightness (100 = normal)
+        const brightnessAdjust = this.settings.brightness / 100;
+
+        // Highlights adjustment (100 = normal, >100 = brighter highlights, <100 = darker highlights)
+        // Combine with base brightness for overall effect
+        const highlightsAdjust = this.settings.highlights / 100;
+        const combinedBrightness = brightnessAdjust * highlightsAdjust;
+
+        if (combinedBrightness !== 1) {
+            cssFilters.push(`brightness(${combinedBrightness})`);
         }
 
         // Contrast (100 = normal)
@@ -270,19 +325,31 @@ class VideoFilter {
             cssFilters.push(`contrast(${this.settings.contrast / 100})`);
         }
 
+        // Shadows (black levels) - use contrast curve adjustment
+        // 100 = normal, >100 = lighter shadows, <100 = darker shadows
+        if (this.settings.shadows !== 100) {
+            const shadowsAdjust = this.settings.shadows / 100;
+            // Apply a secondary contrast adjustment for shadows
+            cssFilters.push(`contrast(${shadowsAdjust})`);
+        }
+
         // Saturation (100 = normal)
         if (this.settings.saturation !== 100) {
             cssFilters.push(`saturate(${this.settings.saturation / 100})`);
         }
 
-        // Apply SVG filter for sharpness and temperature
+        // Apply SVG filter for advanced effects (sharpness, temperature, denoise, edge enhancement)
         const hasSharpen = this.settings.sharpness > 0;
         const hasTemperature = this.settings.temperature !== 0;
+        const hasDenoise = this.settings.denoise > 0;
+        const hasEdgeEnhance = this.settings.edgeEnhance > 0;
 
-        if (hasSharpen || hasTemperature) {
+        if (hasSharpen || hasTemperature || hasDenoise || hasEdgeEnhance) {
             cssFilters.push(`url(#${this.svgFilterId})`);
             this.updateSharpenMatrix(this.settings.sharpness);
             this.updateTemperatureMatrix(this.settings.temperature);
+            this.updateDenoiseBlur(this.settings.denoise);
+            this.updateEdgeEnhancement(this.settings.edgeEnhance);
         }
 
         // Apply combined filter to video
@@ -328,6 +395,10 @@ class VideoFilter {
         this.setupSlider('video-filter-contrast', 'contrast', 'contrast-value', '%');
         this.setupSlider('video-filter-saturation', 'saturation', 'saturation-value', '%');
         this.setupSlider('video-filter-temperature', 'temperature', 'temperature-value', '');
+        this.setupSlider('video-filter-highlights', 'highlights', 'highlights-value', '%');
+        this.setupSlider('video-filter-shadows', 'shadows', 'shadows-value', '%');
+        this.setupSlider('video-filter-denoise', 'denoise', 'denoise-value', '%');
+        this.setupSlider('video-filter-edge-enhance', 'edgeEnhance', 'edge-enhance-value', '%');
 
         // Reset button
         document.getElementById('video-filter-reset')?.addEventListener('click', () => {
@@ -403,6 +474,10 @@ class VideoFilter {
             contrast: PLAYER_DEFAULTS.VIDEO_FILTER_CONTRAST,
             saturation: PLAYER_DEFAULTS.VIDEO_FILTER_SATURATION,
             temperature: PLAYER_DEFAULTS.VIDEO_FILTER_TEMPERATURE,
+            highlights: PLAYER_DEFAULTS.VIDEO_FILTER_HIGHLIGHTS,
+            shadows: PLAYER_DEFAULTS.VIDEO_FILTER_SHADOWS,
+            denoise: PLAYER_DEFAULTS.VIDEO_FILTER_DENOISE,
+            edgeEnhance: PLAYER_DEFAULTS.VIDEO_FILTER_EDGE_ENHANCE,
         };
 
         // Update sliders
@@ -411,6 +486,10 @@ class VideoFilter {
         this.updateSlider('video-filter-contrast', 'contrast-value', this.settings.contrast, '%');
         this.updateSlider('video-filter-saturation', 'saturation-value', this.settings.saturation, '%');
         this.updateSlider('video-filter-temperature', 'temperature-value', this.settings.temperature, '');
+        this.updateSlider('video-filter-highlights', 'highlights-value', this.settings.highlights, '%');
+        this.updateSlider('video-filter-shadows', 'shadows-value', this.settings.shadows, '%');
+        this.updateSlider('video-filter-denoise', 'denoise-value', this.settings.denoise, '%');
+        this.updateSlider('video-filter-edge-enhance', 'edge-enhance-value', this.settings.edgeEnhance, '%');
 
         this.applyFilters();
         this.saveSettings();

@@ -102,6 +102,10 @@ export const STORAGE_KEYS = {
     VIDEO_FILTER_SATURATION: 'videoFilterSaturation',
     VIDEO_FILTER_TEMPERATURE: 'videoFilterTemperature',
     VIDEO_FILTER_ENABLED: 'videoFilterEnabled',
+    VIDEO_FILTER_HIGHLIGHTS: 'videoFilterHighlights',
+    VIDEO_FILTER_SHADOWS: 'videoFilterShadows',
+    VIDEO_FILTER_DENOISE: 'videoFilterDenoise',
+    VIDEO_FILTER_EDGE_ENHANCE: 'videoFilterEdgeEnhance',
     // Streaming performance settings
     STREAMING_PROFILE: 'streamingProfile',
     // Bundled addons installation tracking
@@ -230,6 +234,10 @@ export const PLAYER_DEFAULTS = {
     VIDEO_FILTER_CONTRAST: 100,     // Range: 50-150 (100 = normal)
     VIDEO_FILTER_SATURATION: 100,   // Range: 0-200 (100 = normal)
     VIDEO_FILTER_TEMPERATURE: 0,    // Range: -100 to 100 (0 = neutral)
+    VIDEO_FILTER_HIGHLIGHTS: 100,   // Range: 50-150 (100 = normal)
+    VIDEO_FILTER_SHADOWS: 100,      // Range: 50-150 (100 = normal)
+    VIDEO_FILTER_DENOISE: 0,        // Range: 0-100 (0 = no denoise)
+    VIDEO_FILTER_EDGE_ENHANCE: 0,   // Range: 0-100 (0 = no edge enhancement)
 } as const;
 
 // Playback speed options

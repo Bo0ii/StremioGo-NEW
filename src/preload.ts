@@ -3104,7 +3104,11 @@ function setupPartyVideoListeners(video: HTMLVideoElement): void {
     partyVideoElement = video;
     partyVideoListenersActive = true;
 
+    // Ensure isRemoteAction starts as false when setting up new video
+    isRemoteAction = false;
+
     logger.info('[Party] Setting up video sync listeners, isHost:', partyService.isHost);
+    console.log('[Party] isRemoteAction reset to false, ready for new video');
 
     // Add event listeners for host to broadcast changes
     video.addEventListener('play', onPartyVideoPlay);
@@ -3137,6 +3141,12 @@ function cleanupPartyVideoSync(): void {
     partyService.stopSync();
     partyVideoElement = null;
     partyVideoListenersActive = false;
+
+    // CRITICAL: Reset the remote action flag to prevent it from staying true
+    // when switching to a new video. If this flag stays true, the host won't
+    // be able to broadcast events, causing sync to break on subsequent videos.
+    isRemoteAction = false;
+    logger.info('[Party] Reset isRemoteAction flag');
 
     // Reset stream sync state to allow syncing to new videos
     // Don't clear lastSyncedStreamUrl here - keep it for comparison

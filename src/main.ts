@@ -6,7 +6,7 @@ import Updater from "./core/Updater";
 import Properties from "./core/Properties";
 import logger from "./utils/logger";
 import { IPC_CHANNELS, URLS } from "./constants";
-import { Notification } from "electron";
+import { Notification, nativeImage } from "electron";
 
 // Fix GTK 2/3 and GTK 4 conflict on Linux
 import { app } from 'electron';
@@ -143,6 +143,14 @@ app.commandLine.appendSwitch('enable-quic');
 app.commandLine.appendSwitch('enable-async-dns');
 
 async function createWindow() {
+    // Get the icon path - use different paths for packaged vs development
+    const iconPath = app.isPackaged
+        ? join(process.resourcesPath, "images", "mainnew.png")
+        : join(__dirname, "..", "..", "images", "mainnew.png");
+    
+    // Create native image from the icon path
+    const appIcon = nativeImage.createFromPath(iconPath);
+    
     mainWindow = new BrowserWindow({
         webPreferences: {
             preload: join(__dirname, "preload.js"),
@@ -173,7 +181,7 @@ async function createWindow() {
         useContentSize: false,
         paintWhenInitiallyHidden: true,
         show: false,
-        icon: "./images/mainnew.png",
+        icon: appIcon,
         frame: !transparencyEnabled,
         transparent: transparencyEnabled,
         hasShadow: !transparencyEnabled,

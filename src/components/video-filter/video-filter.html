@@ -72,6 +72,46 @@
                 <span>Warm</span>
             </div>
         </div>
+
+        <!-- Highlights -->
+        <div class="video-filter-control">
+            <div class="video-filter-label">
+                <span>Highlights</span>
+                <span id="highlights-value" class="video-filter-value">{{ highlights }}%</span>
+            </div>
+            <input type="range" id="video-filter-highlights" class="video-filter-slider"
+                   min="50" max="150" value="{{ highlights }}" step="1">
+        </div>
+
+        <!-- Shadows (Black Levels) -->
+        <div class="video-filter-control">
+            <div class="video-filter-label">
+                <span>Shadows</span>
+                <span id="shadows-value" class="video-filter-value">{{ shadows }}%</span>
+            </div>
+            <input type="range" id="video-filter-shadows" class="video-filter-slider"
+                   min="50" max="150" value="{{ shadows }}" step="1">
+        </div>
+
+        <!-- Denoise -->
+        <div class="video-filter-control">
+            <div class="video-filter-label">
+                <span>Denoise</span>
+                <span id="denoise-value" class="video-filter-value">{{ denoise }}%</span>
+            </div>
+            <input type="range" id="video-filter-denoise" class="video-filter-slider"
+                   min="0" max="100" value="{{ denoise }}" step="1">
+        </div>
+
+        <!-- Edge Enhancement -->
+        <div class="video-filter-control">
+            <div class="video-filter-label">
+                <span>Edge Enhancement</span>
+                <span id="edge-enhance-value" class="video-filter-value">{{ edgeEnhance }}%</span>
+            </div>
+            <input type="range" id="video-filter-edge-enhance" class="video-filter-slider"
+                   min="0" max="100" value="{{ edgeEnhance }}" step="1">
+        </div>
     </div>
 </div>
 

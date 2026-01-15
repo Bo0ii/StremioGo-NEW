@@ -175,6 +175,16 @@ function renderParticipants(members: WatchPartyMember[]): void {
 	const currentUserIsHost = partyService.isHost;
 	const hostCount = members.filter(m => m.isHost).length;
 
+	// DEBUGGING: Log what we're about to render
+	console.log('[PartyPanel] === RENDER DEBUG ===');
+	console.log('[PartyPanel] Rendering', members.length, 'members');
+	console.log('[PartyPanel] Current user is host:', currentUserIsHost);
+	console.log('[PartyPanel] Host count:', hostCount);
+	members.forEach((member, index) => {
+		console.log(`[PartyPanel] Member ${index + 1}: ${member.userName} | isHost: ${member.isHost} | will show crown: ${member.isHost}`);
+	});
+	console.log('[PartyPanel] === END RENDER DEBUG ===');
+
 	listEl.innerHTML = members.map(member => {
 		const initial = member.userName.charAt(0).toUpperCase();
 		const color = getColorForUser(member.userId);

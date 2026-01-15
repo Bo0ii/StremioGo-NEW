@@ -182,6 +182,16 @@ function renderParticipants(members: WatchPartyMember[]): void {
 	const currentUserIsHost = partyService.isHost;
 	const hostCount = members.filter(m => m.isHost).length;
 
+	// DEBUGGING: Log what we're about to render
+	console.log('[PartyPopover] === RENDER DEBUG ===');
+	console.log('[PartyPopover] Rendering', members.length, 'members');
+	console.log('[PartyPopover] Current user is host:', currentUserIsHost);
+	console.log('[PartyPopover] Host count:', hostCount);
+	members.forEach((member, index) => {
+		console.log(`[PartyPopover] Member ${index + 1}: ${member.userName} | isHost: ${member.isHost} | will show crown: ${member.isHost}`);
+	});
+	console.log('[PartyPopover] === END RENDER DEBUG ===');
+
 	listEl.innerHTML = members.map(member => {
 		const initial = member.userName.charAt(0).toUpperCase();
 		const color = getColorForUser(member.userId);

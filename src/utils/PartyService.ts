@@ -12,6 +12,7 @@ const WATCHPARTY_SERVERS: Record<string, string> = {
 // Timing constants
 const PING_TIMEOUT = 34000; // 30s ping interval + 4s buffer
 const SYNC_INTERVAL = 1000;
+const SYNC_INTERVAL_BUFFERING = 5000; // Slower sync when buffering to reduce CPU load
 const MAX_SYNC_DELAY_MS = 1000; // 1 second tolerance before forcing seek
 
 // Storage keys for persisting user preferences
@@ -79,6 +80,8 @@ class PartyService extends EventEmitter {
 	private _myUserId: string | null = null;
 	private _isCreator = false; // Track if we created this party
 	private _userIdDetected = false; // Track if we've identified our userId
+	private _lastBroadcastState: string | null = null; // Track last broadcast to avoid redundant updates
+	private _isBuffering = false; // Track buffering state
 
 	// Getters
 	get connected(): boolean { return this._connected; }
@@ -305,9 +308,11 @@ class PartyService extends EventEmitter {
 			this.pingTimeout = null;
 		}
 		if (this.syncInterval) {
-			clearInterval(this.syncInterval);
+			clearTimeout(this.syncInterval);
 			this.syncInterval = null;
 		}
+		this._lastBroadcastState = null;
+		this._isBuffering = false;
 	}
 
 	/**
@@ -383,6 +388,16 @@ class PartyService extends EventEmitter {
 					logger.info('[Party] I am host:', me?.isHost, 'My username:', me?.userName);
 					console.log('[Party] User detected - isHost:', me?.isHost, 'userId:', this._myUserId);
 				}
+
+				// DEBUGGING: Log all member host statuses on every update
+				logger.info('[Party] Member list update:');
+				console.log('[Party] === MEMBER HOST STATUS DEBUG ===');
+				party.members.forEach((member, index) => {
+					const isMe = member.userId === this._myUserId;
+					logger.info(`[Party]   ${index + 1}. ${member.userName} (${member.userId}) - isHost: ${member.isHost}${isMe ? ' (ME)' : ''}`);
+					console.log(`[Party] Member ${index + 1}: ${member.userName} | isHost: ${member.isHost} | isMe: ${isMe}`);
+				});
+				console.log('[Party] === END DEBUG ===');
 
 				// Detect join/leave/host changes for system messages
 				if (previousRoom) {
@@ -596,17 +611,51 @@ class PartyService extends EventEmitter {
 	startSync(getVideoElement: () => HTMLVideoElement | null): void {
 		this.stopSync();
 
-		this.syncInterval = setInterval(() => {
-			const video = getVideoElement();
-			if (!video || !this._room || !this.isHost) return;
+		let currentInterval = SYNC_INTERVAL;
 
-			// Broadcast current video state
-			this.broadcastCommand('state', {
-				time: video.currentTime,
-				paused: video.paused,
-				playbackSpeed: video.playbackRate,
-			});
-		}, SYNC_INTERVAL);
+		const syncLoop = () => {
+			const video = getVideoElement();
+			if (!video || !this._room || !this.isHost) {
+				this.syncInterval = setTimeout(syncLoop, currentInterval);
+				return;
+			}
+
+			// Detect buffering/loading state
+			const isBuffering = video.readyState < 3; // HAVE_FUTURE_DATA
+			const isWaiting = video.networkState === 2; // NETWORK_LOADING
+
+			// Adjust interval based on buffering state to reduce CPU usage
+			if (isBuffering || isWaiting) {
+				currentInterval = SYNC_INTERVAL_BUFFERING;
+				this._isBuffering = true;
+			} else {
+				currentInterval = SYNC_INTERVAL;
+				if (this._isBuffering) {
+					// Just finished buffering, force a sync
+					this._lastBroadcastState = null;
+					this._isBuffering = false;
+				}
+			}
+
+			// Create state signature to avoid redundant broadcasts
+			const stateSignature = `${video.currentTime.toFixed(1)}_${video.paused}_${video.playbackRate}`;
+
+			// Only broadcast if state actually changed
+			if (this._lastBroadcastState !== stateSignature) {
+				this.broadcastCommand('state', {
+					time: video.currentTime,
+					paused: video.paused,
+					playbackSpeed: video.playbackRate,
+				});
+				this._lastBroadcastState = stateSignature;
+			}
+
+			// Schedule next sync
+			this.syncInterval = setTimeout(syncLoop, currentInterval);
+		};
+
+		// Start the sync loop
+		this.syncInterval = setTimeout(syncLoop, currentInterval);
 	}
 
 	/**
@@ -614,9 +663,11 @@ class PartyService extends EventEmitter {
 	 */
 	stopSync(): void {
 		if (this.syncInterval) {
-			clearInterval(this.syncInterval);
+			clearTimeout(this.syncInterval);
 			this.syncInterval = null;
 		}
+		this._lastBroadcastState = null;
+		this._isBuffering = false;
 	}
 
 	/**

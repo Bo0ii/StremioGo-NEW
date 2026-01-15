@@ -164,23 +164,33 @@ async function startInstallation(): Promise<void> {
 }
 
 function updateDownloadProgress(progress: number, bytesDownloaded: number, totalBytes: number): void {
-    const progressBar = document.getElementById('updateProgressBar');
-    const statusText = document.getElementById('updateStatusText');
-    const detailsText = document.getElementById('updateDetailsText');
+    // Use requestAnimationFrame to ensure UI updates happen during repaint cycle
+    // This is especially important on Windows where the UI thread needs explicit repaint events
+    requestAnimationFrame(() => {
+        const progressBar = document.getElementById('updateProgressBar');
+        const statusText = document.getElementById('updateStatusText');
+        const detailsText = document.getElementById('updateDetailsText');
 
-    if (!progressBar || !statusText || !detailsText) return;
+        if (!progressBar || !statusText || !detailsText) return;
 
-    // Reset any error styling
-    detailsText.style.color = '';
-    progressBar.style.background = 'linear-gradient(90deg, #4a90e2, #357abd)';
+        // Reset any error styling
+        detailsText.style.color = '';
+        progressBar.style.background = 'linear-gradient(90deg, #4a90e2, #357abd)';
 
-    progressBar.style.width = `${Math.min(progress, 100)}%`;
-    statusText.textContent = `Downloading update... ${Math.round(progress)}%`;
+        progressBar.style.width = `${Math.min(progress, 100)}%`;
+        statusText.textContent = `Downloading update... ${Math.round(progress)}%`;
 
-    // Format bytes
-    const downloadedMB = (bytesDownloaded / (1024 * 1024)).toFixed(2);
-    const totalMB = totalBytes > 0 ? (totalBytes / (1024 * 1024)).toFixed(2) : '?';
-    detailsText.textContent = `Downloaded ${downloadedMB} MB of ${totalMB} MB`;
+        // Format bytes
+        const downloadedMB = (bytesDownloaded / (1024 * 1024)).toFixed(2);
+        const totalMB = totalBytes > 0 ? (totalBytes / (1024 * 1024)).toFixed(2) : '?';
+        detailsText.textContent = `Downloaded ${downloadedMB} MB of ${totalMB} MB`;
+        
+        // Force a repaint on Windows by accessing offsetHeight (triggers layout recalculation)
+        // This ensures the progress bar visual update is immediately visible
+        if (process.platform === 'win32') {
+            void progressBar.offsetHeight;
+        }
+    });
 }
 
 function onDownloadComplete(): void {
