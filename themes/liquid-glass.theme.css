@@ -166,10 +166,11 @@ body.scrolling-active [class*="library-content"] {
   -webkit-backface-visibility: hidden !important;
 }
 
-/* Smoother hover scale effect - native macOS spring feel */
+/* SIMPLIFIED hover - subtle brightness only, no scale */
 [class*="meta-item-container"]:hover [class*="poster-container"] {
-  transform: translate3d(0, 0, 0) scale3d(1.03, 1.03, 1) !important;
-  transition-timing-function: var(--mac-spring) !important;
+  transform: translate3d(0, 0, 0) !important;
+  filter: brightness(1.1) !important;
+  transition: filter 0.15s ease !important;
 }
 
 /* Instant visual feedback on press */
@@ -510,103 +511,22 @@ nav[class*="horizontal-nav-bar"][style] {
     opacity: 0.7 !important;
 }
 
-/* Gradient blur pseudo-element - covers ENTIRE nav bar with consistent blur */
+/* PERFORMANCE: No container overlay on nav bars - clean transparent look */
 .horizontal-nav-bar-container-Y_zvK::before,
 .horizontal-nav-bar-ji5GB::before,
 nav.horizontal-nav-bar-container-Y_zvK::before,
 nav.horizontal-nav-bar-ji5GB::before,
 [class*="horizontal-nav-bar-container"]::before,
 [class*="horizontal-nav-bar-"]::before {
-    content: '' !important;
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    /* Subtle gradient tint for depth - fades to fully transparent */
-    background: linear-gradient(to bottom,
-        rgba(15, 15, 15, 0.6) 0%,
-        rgba(15, 15, 15, 0.3) 30%,
-        rgba(15, 15, 15, 0.1) 60%,
-        transparent 100%) !important;
-    /* Consistent blur - SAME for scroll and idle */
-    backdrop-filter: blur(4px) !important;
-    -webkit-backdrop-filter: blur(4px) !important;
-    /* Smooth gradient mask */
-    mask-image: linear-gradient(to bottom,
-        black 0%,
-        rgba(0, 0, 0, 0.85) 25%,
-        rgba(0, 0, 0, 0.5) 50%,
-        rgba(0, 0, 0, 0.15) 75%,
-        transparent 100%) !important;
-    -webkit-mask-image: linear-gradient(to bottom,
-        black 0%,
-        rgba(0, 0, 0, 0.85) 25%,
-        rgba(0, 0, 0, 0.5) 50%,
-        rgba(0, 0, 0, 0.15) 75%,
-        transparent 100%) !important;
-    z-index: 1 !important;
-    pointer-events: none !important;
-    /* GPU acceleration */
-    transform: translate3d(0, 0, 0) !important;
-    -webkit-transform: translate3d(0, 0, 0) !important;
-    backface-visibility: hidden !important;
-    -webkit-backface-visibility: hidden !important;
+    content: none !important;
+    display: none !important;
 }
 
-/* NO scroll performance changes for nav bar - keep blur consistent */
-
-/* Gradient blur for main navigation bar in routes container */
-/* NOTE: Excludes vertical-nav-bar to prevent double blur (it's already covered by horizontal-nav-bar::before) */
-#app > div[class*="router"] > div[class*="routes-container"] > div > div[class*="route-content"] > div > div > nav:not([class*="vertical-nav-bar"]),
-#app [class*="routes-container"] nav:not([class*="vertical-nav-bar"]),
-#app [class*="route-content"] nav:not([class*="vertical-nav-bar"]) {
-    position: relative !important;
-    background: transparent !important;
-}
-
-#app > div[class*="router"] > div[class*="routes-container"] > div > div[class*="route-content"] > div > div > nav:not([class*="vertical-nav-bar"])::before,
-#app [class*="routes-container"] nav:not([class*="vertical-nav-bar"])::before,
-#app [class*="route-content"] nav:not([class*="vertical-nav-bar"])::before {
-    content: '' !important;
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    /* Subtle gradient tint for depth - fades to fully transparent */
-    background: linear-gradient(to bottom,
-        rgba(15, 15, 15, 0.6) 0%,
-        rgba(15, 15, 15, 0.3) 30%,
-        rgba(15, 15, 15, 0.1) 60%,
-        transparent 100%) !important;
-    /* Consistent blur - SAME for scroll and idle */
-    backdrop-filter: blur(4px) !important;
-    -webkit-backdrop-filter: blur(4px) !important;
-    /* Smooth gradient mask */
-    mask-image: linear-gradient(to bottom,
-        black 0%,
-        rgba(0, 0, 0, 0.85) 25%,
-        rgba(0, 0, 0, 0.5) 50%,
-        rgba(0, 0, 0, 0.15) 75%,
-        transparent 100%) !important;
-    -webkit-mask-image: linear-gradient(to bottom,
-        black 0%,
-        rgba(0, 0, 0, 0.85) 25%,
-        rgba(0, 0, 0, 0.5) 50%,
-        rgba(0, 0, 0, 0.15) 75%,
-        transparent 100%) !important;
-    z-index: -1 !important;
-    pointer-events: none !important;
-    /* GPU acceleration */
-    transform: translate3d(0, 0, 0) !important;
-    -webkit-transform: translate3d(0, 0, 0) !important;
-    backface-visibility: hidden !important;
-    -webkit-backface-visibility: hidden !important;
+/* Routes container nav - no overlay */
+#app [class*="routes-container"] nav::before,
+#app [class*="route-content"] nav::before {
+    content: none !important;
+    display: none !important;
 }
 
 /* Ensure vertical-nav-bar has NO ::before pseudo-element with blur */
@@ -1966,7 +1886,7 @@ body.ghost-clicking #heroLoadingScreen {
     will-change: opacity, filter !important;
 }
 
-/* Create full-poster gray overlay on hover (hidden by default) - GPU optimized */
+/* Subtle overlay on hover (hidden by default) - lighter effect */
 .meta-item-container-Tj0Ib .poster-container-qkw48::before {
     content: '';
     position: absolute !important;
@@ -1976,20 +1896,19 @@ body.ghost-clicking #heroLoadingScreen {
     bottom: 0 !important;
     width: 100% !important;
     height: 100% !important;
-    background: rgba(0, 0, 0, 0.4) !important;
+    background: rgba(0, 0, 0, 0.15) !important;
     opacity: 0 !important;
     z-index: 5 !important;
     pointer-events: none !important;
-    transition: opacity 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+    transition: opacity 0.15s ease !important;
     border-radius: inherit !important;
     transform: translate3d(0, 0, 0) !important;
     -webkit-transform: translate3d(0, 0, 0) !important;
-    will-change: opacity !important;
     backface-visibility: hidden !important;
     -webkit-backface-visibility: hidden !important;
 }
 
-/* HOVER STATE: Show gray overlay over entire poster */
+/* HOVER STATE: Subtle darkening */
 .meta-item-container-Tj0Ib .poster-container-qkw48:hover::before {
     opacity: 1 !important;
 }
@@ -2003,16 +1922,15 @@ body.performance-mode .meta-item-container-Tj0Ib .poster-container-qkw48:hover::
     -webkit-backdrop-filter: none !important;
 }
 
-/* HOVER STATE: Frosted white glass play button ring - GPU accelerated */
+/* HOVER STATE: Simple play button - no blur, no scale */
 .meta-item-container-Tj0Ib .poster-container-qkw48:hover .play-icon-layer-vpQIo .play-icon-outer-r3iKR {
-    background: rgba(255, 255, 255, 0.45) !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -1px 0 rgba(0, 0, 0, 0.1) !important;
-    backdrop-filter: blur(4px) !important;
-    -webkit-backdrop-filter: blur(4px) !important;
-    border: 1.5px solid rgba(255, 255, 255, 0.5) !important;
-    /* Only scale, no translate since parent is already centered */
-    transform: translate3d(0, 0, 0) scale3d(1.02, 1.02, 1) !important;
-    -webkit-transform: translate3d(0, 0, 0) scale3d(1.02, 1.02, 1) !important;
+    background: rgba(255, 255, 255, 0.3) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.4) !important;
+    transform: translate3d(0, 0, 0) !important;
+    -webkit-transform: translate3d(0, 0, 0) !important;
 }
 
 /* Completely disable play button blur and effects during scroll */
@@ -2028,10 +1946,10 @@ body.performance-mode .meta-item-container-Tj0Ib .poster-container-qkw48:hover .
     border: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
 
-/* HOVER STATE: Bright white play icon */
+/* HOVER STATE: Clean white play icon */
 .meta-item-container-Tj0Ib .poster-container-qkw48:hover .play-icon-layer-vpQIo .play-icon-QmEEA {
     color: rgba(255, 255, 255, 1) !important;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)) !important;
+    filter: none !important;
 }
 
 /* ========================= WATCHED FLAG GLASS STYLING ========================= */

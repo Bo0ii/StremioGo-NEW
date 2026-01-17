@@ -106,10 +106,10 @@ export const STORAGE_KEYS = {
     VIDEO_FILTER_SHADOWS: 'videoFilterShadows',
     VIDEO_FILTER_DENOISE: 'videoFilterDenoise',
     VIDEO_FILTER_EDGE_ENHANCE: 'videoFilterEdgeEnhance',
-    VIDEO_FILTER_UPSCALE_CAS: 'videoFilterUpscaleCAS',
-    VIDEO_FILTER_UPSCALE_LANCZOS: 'videoFilterUpscaleLanczos',
+    VIDEO_FILTER_FAKE_HDR: 'videoFilterFakeHDR',
+    VIDEO_FILTER_ANIME_ENHANCE: 'videoFilterAnimeEnhance',
     VIDEO_FILTER_ANIME4K_MODE: 'videoFilterAnime4KMode',
-    VIDEO_FILTER_ANIME4K_STRENGTH: 'videoFilterAnime4KStrength',
+    VIDEO_FILTER_MOTION_SMOOTH: 'videoFilterMotionSmooth',
     // Streaming performance settings
     STREAMING_PROFILE: 'streamingProfile',
     // Bundled addons installation tracking
@@ -217,10 +217,10 @@ export const PLAYER_DEFAULTS = {
     VIDEO_FILTER_SHADOWS: 100,      // Range: 50-150 (100 = normal)
     VIDEO_FILTER_DENOISE: 0,        // Range: 0-100 (0 = no denoise)
     VIDEO_FILTER_EDGE_ENHANCE: 0,   // Range: 0-100 (0 = no edge enhancement)
-    VIDEO_FILTER_UPSCALE_CAS: 0,    // Range: 0-100 (0 = off, AMD FSR-style contrast adaptive sharpening)
-    VIDEO_FILTER_UPSCALE_LANCZOS: 0, // Range: 0-100 (0 = off, Lanczos-style for anime/animation)
-    VIDEO_FILTER_ANIME4K_MODE: 'off', // Modes: off, modeA, modeAA, modeB, modeBB, modeC
-    VIDEO_FILTER_ANIME4K_STRENGTH: 50, // Range: 0-100 (default 50%)
+    VIDEO_FILTER_FAKE_HDR: false,   // Boolean toggle for HDR-like tone mapping effect
+    VIDEO_FILTER_ANIME_ENHANCE: false, // Boolean toggle for anime line art enhancement
+    VIDEO_FILTER_ANIME4K_MODE: 'off', // Anime4K WebGL mode: off, modeA, modeB, modeC, modeAHQ, modeBHQ, modeCHQ
+    VIDEO_FILTER_MOTION_SMOOTH: 0, // Range: 0-100 (0 = off, motion smoothing/frame blending)
 } as const;
 
 // Playback speed options

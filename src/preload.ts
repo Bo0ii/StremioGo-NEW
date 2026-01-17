@@ -2846,95 +2846,154 @@ function getAboutIcon(): string {
 }
 
 function injectPerformanceCSS(): void {
-    // Main performance CSS is now in the theme file (liquid-glass.theme.css)
-    // This function only injects minimal scroll state CSS for themes that don't have it
-    // and sets up the scroll state detection
+    // Minimal - just disable smooth scroll behavior
     const style = document.createElement('style');
     style.id = 'enhanced-scroll-state-css';
     style.textContent = `
-        /* Minimal scroll state CSS - main performance CSS is in theme file */
-        /* This ensures scroll detection works even with non-glass themes */
-
-        /* Fallback scroll optimizations for non-themed pages */
-        html {
-            scroll-behavior: smooth;
-        }
-
-        /* Base GPU acceleration fallback */
-        [class*="meta-items-container"],
-        [class*="board-content-container"] {
-            transform: translate3d(0, 0, 0);
-            -webkit-overflow-scrolling: touch;
-        }
-
-        /* Scroll state class definitions (theme CSS uses these) */
-        body.scrolling-active,
-        body.performance-mode {
-            /* These classes trigger theme-specific optimizations */
-        }
+        html { scroll-behavior: auto !important; }
     `;
     document.head.appendChild(style);
-
-    // Add scroll state detection for dynamic optimizations
-    setupScrollStateDetection();
-
-    logger.info("Scroll state detection CSS injected");
+    logger.info("Minimal performance CSS injected");
 }
 
 // Detect active scrolling to apply performance optimizations
-function setupScrollStateDetection(): void {
+// @ts-ignore: Intentionally unused, kept for future use
+function _setupScrollStateDetection(): void {
     let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
-    let rafId: number | null = null;
     let isScrolling = false;
-    let lastScrollTime = 0;
-    const SCROLL_DEBOUNCE = 16; // One frame at 60Hz, optimized for 120Hz ProMotion
+
+    // Short debounce for responsive feel (100ms)
+    const SCROLL_END_DELAY = 100;
 
     // Pre-cache classList references for micro-optimization
     const bodyClassList = document.body.classList;
     const htmlClassList = document.documentElement.classList;
 
-    // RAF-batched scroll handler for smoothest performance
+    // Throttled scroll handler - fires at most once per frame
+    let ticking = false;
     const handleScroll = () => {
-        const now = performance.now();
-        lastScrollTime = now;
+        // Throttle to one update per animation frame
+        if (ticking) return;
+        ticking = true;
 
-        // Immediate class addition on first scroll (no RAF delay)
-        if (!isScrolling) {
-            isScrolling = true;
-            bodyClassList.add('scrolling-active');
-            htmlClassList.add('performance-mode');
-            // NOTE: Do NOT pause MutationObservers - this prevents content from rendering during scroll
-            // CSS optimizations alone are sufficient for scroll performance
-        }
+        requestAnimationFrame(() => {
+            ticking = false;
 
-        // Clear previous timeout
-        if (scrollTimeout) {
-            clearTimeout(scrollTimeout);
-        }
+            // Add scrolling class on first scroll event
+            if (!isScrolling) {
+                isScrolling = true;
+                bodyClassList.add('scrolling-active');
+                htmlClassList.add('performance-mode');
+            }
 
-        // RAF-based class removal for smooth transition back
-        scrollTimeout = setTimeout(() => {
-            if (rafId) cancelAnimationFrame(rafId);
-            rafId = requestAnimationFrame(() => {
-                if (performance.now() - lastScrollTime >= SCROLL_DEBOUNCE) {
-                    isScrolling = false;
-                    bodyClassList.remove('scrolling-active');
-                    htmlClassList.remove('performance-mode');
-                }
-            });
-        }, SCROLL_DEBOUNCE);
+            // Clear previous timeout
+            if (scrollTimeout) {
+                clearTimeout(scrollTimeout);
+            }
+
+            // Set timeout to detect scroll end
+            scrollTimeout = setTimeout(() => {
+                isScrolling = false;
+                bodyClassList.remove('scrolling-active');
+                htmlClassList.remove('performance-mode');
+            }, SCROLL_END_DELAY);
+        });
     };
 
     // Use capture phase and passive for best performance
+    // Passive means we can't call preventDefault, but we don't need to
     document.addEventListener('scroll', handleScroll, { capture: true, passive: true });
 
-    // Also handle wheel events for immediate response
+    // Handle wheel events for immediate response (before actual scroll)
     document.addEventListener('wheel', handleScroll, { passive: true });
 
     // Handle touch scrolling
     document.addEventListener('touchmove', handleScroll, { passive: true });
 
-    logger.info("Scroll state detection initialized (16ms RAF-based, observers remain active)");
+    logger.info("Scroll state detection initialized (100ms debounce, RAF-throttled)");
+}
+
+// ============================================
+// HOVER INTENT SYSTEM
+// Delays expensive hover operations until user actually intends to hover
+// Cancels immediately on mouse leave to prevent wasted work
+// NOTE: Currently disabled, kept for future use
+// ============================================
+// @ts-ignore: Intentionally unused, kept for future implementation
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _setupHoverIntent(): void {
+    const HOVER_INTENT_DELAY = 200; // ms before triggering expensive hover effects
+    const hoverTimers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
+    const hoveredElements = new WeakSet<Element>();
+
+    // Delegate hover detection to document for efficiency
+    document.addEventListener('mouseover', (e) => {
+        const target = e.target as Element;
+        if (!target) return;
+
+        // Find the closest meta-item-container (poster card)
+        const posterCard = target.closest('[class*="meta-item-container"]');
+        if (!posterCard) return;
+
+        // Don't process if already hovered
+        if (hoveredElements.has(posterCard)) return;
+
+        // Cancel any existing timer for this element
+        const existingTimer = hoverTimers.get(posterCard);
+        if (existingTimer) {
+            clearTimeout(existingTimer);
+        }
+
+        // Set a delayed timer for hover intent
+        const timer = setTimeout(() => {
+            // Only apply hover effect if mouse is still over the element
+            if (posterCard.matches(':hover')) {
+                hoveredElements.add(posterCard);
+                posterCard.classList.add('hover-intent-active');
+            }
+        }, HOVER_INTENT_DELAY);
+
+        hoverTimers.set(posterCard, timer);
+    }, { passive: true });
+
+    document.addEventListener('mouseout', (e) => {
+        const target = e.target as Element;
+        if (!target) return;
+
+        const posterCard = target.closest('[class*="meta-item-container"]');
+        if (!posterCard) return;
+
+        // Immediately cancel the hover intent timer
+        const timer = hoverTimers.get(posterCard);
+        if (timer) {
+            clearTimeout(timer);
+            hoverTimers.delete(posterCard);
+        }
+
+        // Remove hover state immediately (no delay on leave)
+        hoveredElements.delete(posterCard);
+        posterCard.classList.remove('hover-intent-active');
+    }, { passive: true });
+
+    // Add CSS for hover-intent-active state
+    const hoverIntentStyle = document.createElement('style');
+    hoverIntentStyle.id = 'hover-intent-css';
+    hoverIntentStyle.textContent = `
+        /* Only apply expensive effects after hover intent confirmed */
+        [class*="meta-item-container"].hover-intent-active [class*="poster-container"] {
+            transform: translateZ(0) scale(1.03) !important;
+            transition-delay: 0ms !important;
+        }
+
+        /* Trailer/preview loading only starts after hover intent */
+        [class*="meta-item-container"]:not(.hover-intent-active) [class*="preview"],
+        [class*="meta-item-container"]:not(.hover-intent-active) [class*="trailer"] {
+            display: none !important;
+        }
+    `;
+    document.head.appendChild(hoverIntentStyle);
+
+    logger.info("Hover intent system initialized (200ms delay, instant cancel)");
 }
 
 // Global flag to track if we're currently handling external player

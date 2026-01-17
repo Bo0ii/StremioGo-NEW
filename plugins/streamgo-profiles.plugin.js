@@ -685,6 +685,13 @@
                     display: none !important;
                 }
 
+                /* Fix Continue Watching row - allow wrapping to show all items */
+                [data-streamgo-cw-row="true"] [class*="meta-items-container"],
+                [data-streamgo-cw-row="true"] [class*="items-container"] {
+                    flex-wrap: wrap !important;
+                    gap: 16px !important;
+                }
+
                 /* Fix Continue Watching row sizing - ensure same flex constraints as regular rows */
                 [data-streamgo-cw-row="true"] .meta-item-QFHCh,
                 [data-streamgo-cw-row="true"] [class*="meta-item"] {
@@ -921,6 +928,12 @@
             const allContentIds = new Set([...this.profileContentIds, ...cachedContentIds]);
             const allTitles = new Set([...this.profileTitles, ...cachedTitles]);
 
+            // If profile has no data, show everything (don't filter)
+            const shouldFilter = allContentIds.size > 0 || allTitles.size > 0;
+            if (!shouldFilter) {
+                console.log(`[${PLUGIN_NAME}] Profile has no continue watching data - showing all items`);
+            }
+
             allBoardRows.forEach(row => {
                 const rowTitle = row.querySelector('[class*="title"]')?.textContent?.toLowerCase() || '';
 
@@ -978,35 +991,41 @@
                     let belongsToProfile = false;
                     let matchType = 'none';
 
-                    if (contentId) {
-                        if (cachedContentIds.has(contentId)) {
-                            belongsToProfile = true;
-                            matchType = 'cached-id';
-                        } else if (allContentIds.has(contentId)) {
-                            belongsToProfile = true;
-                            matchType = 'id';
+                    // If not filtering (profile has no data), show everything
+                    if (!shouldFilter) {
+                        belongsToProfile = true;
+                        matchType = 'no-filter';
+                    } else {
+                        if (contentId) {
+                            if (cachedContentIds.has(contentId)) {
+                                belongsToProfile = true;
+                                matchType = 'cached-id';
+                            } else if (allContentIds.has(contentId)) {
+                                belongsToProfile = true;
+                                matchType = 'id';
+                            }
                         }
-                    }
-                    
-                    if (!belongsToProfile && title) {
-                        const normalizedTitle = title.toLowerCase().trim();
-                        if (cachedTitles.has(normalizedTitle)) {
-                            belongsToProfile = true;
-                            matchType = 'cached-title';
-                            matchedByTitle++;
-                        } else if (allTitles.has(normalizedTitle)) {
-                            belongsToProfile = true;
-                            matchType = 'title';
-                            matchedByTitle++;
+
+                        if (!belongsToProfile && title) {
+                            const normalizedTitle = title.toLowerCase().trim();
+                            if (cachedTitles.has(normalizedTitle)) {
+                                belongsToProfile = true;
+                                matchType = 'cached-title';
+                                matchedByTitle++;
+                            } else if (allTitles.has(normalizedTitle)) {
+                                belongsToProfile = true;
+                                matchType = 'title';
+                                matchedByTitle++;
+                            }
                         }
                     }
 
-                    // Only process items we could identify (by ID or title)
-                    if (contentId || title) {
+                    // Only process items we could identify (by ID or title) OR if not filtering
+                    if (contentId || title || !shouldFilter) {
                         totalItems++;
 
                         if (belongsToProfile) {
-                            // Show - belongs to active profile
+                            // Show - belongs to active profile (or not filtering)
                             // Remove hiding styles/classes, add visible marker
                             item.classList.remove('sgp-hidden');
                             item.removeAttribute('data-streamgo-hidden');
@@ -1016,7 +1035,7 @@
                                 item.style.cssText = '';
                             }
                             visibleCount++;
-                            if (index < 5) console.log(`[${PLUGIN_NAME}] Showing item ${index}: ${contentId || title} (matched by ${matchType})`);
+                            if (index < 5) console.log(`[${PLUGIN_NAME}] Showing item ${index}: ${contentId || title || 'unknown'} (matched by ${matchType})`);
                         } else {
                             // Hide - doesn't belong to active profile
                             // Use CSS class for hiding (no inline styles needed)
@@ -1030,16 +1049,21 @@
                     }
                 });
 
-                console.log(`[${PLUGIN_NAME}] Processing complete: ${totalItems} items identified, ${visibleCount} visible (${matchedByTitle} matched by title)`);
+                console.log(`[${PLUGIN_NAME}] Processing complete: ${totalItems} items identified, ${visibleCount} visible (${matchedByTitle} matched by title), filtering: ${shouldFilter ? 'enabled' : 'disabled'}`);
                 console.log(`[${PLUGIN_NAME}] Profile has ${allContentIds.size} IDs (${cachedContentIds.size} from cache, ${this.profileContentIds.size} from set), ${allTitles.size} titles`);
 
-                // If ALL items are hidden (new profile with no data), hide the entire row
-                if (visibleCount === 0 && totalItems > 0) {
+                // If ALL items are hidden (profile with data but no matches), hide the entire row
+                // But if not filtering (no profile data), keep the row visible
+                if (visibleCount === 0 && totalItems > 0 && shouldFilter) {
                     row.setAttribute('data-streamgo-row-hidden', 'true');
                     console.log(`[${PLUGIN_NAME}] Hiding entire Continue Watching row (0 items for this profile)`);
                 } else if (visibleCount === 0 && totalItems === 0) {
                     // No items identified at all - something is wrong with our extraction
                     console.log(`[${PLUGIN_NAME}] WARNING: Could not identify any items! DOM structure may have changed.`);
+                    // Still keep row visible if not filtering
+                    if (!shouldFilter) {
+                        row.removeAttribute('data-streamgo-row-hidden');
+                    }
                 } else {
                     // Make sure row is visible
                     row.removeAttribute('data-streamgo-row-hidden');

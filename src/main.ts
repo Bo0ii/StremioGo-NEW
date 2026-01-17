@@ -1,6 +1,5 @@
 import { join, basename } from "path";
 import { mkdirSync, existsSync, writeFileSync, unlinkSync } from "fs";
-import { execSync } from "child_process";
 import helpers from './utils/Helpers';
 import Updater from "./core/Updater";
 import Properties from "./core/Properties";
@@ -43,23 +42,21 @@ const transparencyEnabled = existsSync(transparencyFlagPath);
 // Optimized for smooth 144Hz+ scrolling/transitions
 // ============================================
 
-// Detect if running on modern Mac (Apple Silicon) for conditional GPU optimizations
-function isModernMac(): boolean {
-    if (process.platform !== "darwin") return false;
+// Detect high refresh rate display
+function getDisplayRefreshRate(): number {
     try {
-        // Check if Apple Silicon (M1/M2/M3/M4)
-        const cpuBrand = execSync("sysctl -n machdep.cpu.brand_string", { encoding: "utf8" });
-        return cpuBrand.includes("Apple");
+        const { screen } = require('electron');
+        const primaryDisplay = screen.getPrimaryDisplay();
+        return primaryDisplay.displayFrequency || 60;
     } catch {
-        return false; // Unknown, use conservative settings
+        return 60;
     }
 }
 
 // Platform-specific rendering backend
 if (process.platform === "darwin") {
-    logger.info(`Running on macOS (${isModernMac() ? "Apple Silicon" : "Intel"}), using Metal for rendering`);
+    logger.info("Running on macOS, using Metal for rendering");
     app.commandLine.appendSwitch('use-angle', 'metal');
-    // macOS-specific scroll and compositing optimizations
     app.commandLine.appendSwitch('enable-features', 'OverlayScrollbar,MetalCompositor');
     app.commandLine.appendSwitch('enable-smooth-scrolling');
 } else if (process.platform === "win32") {
@@ -70,21 +67,52 @@ if (process.platform === "darwin") {
     app.commandLine.appendSwitch('use-angle', 'gl');
 }
 
-// Force GPU acceleration - safe for all GPUs
-app.commandLine.appendSwitch('ignore-gpu-blocklist');
+// ============================================
+// PERFORMANCE FLAGS - Full set from working version
+// ============================================
 
-// Safe rendering pipeline optimizations (all platforms)
+// Force GPU acceleration
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('disable-software-rasterizer');
+
+// Use discrete GPU
+app.commandLine.appendSwitch('force-high-performance-gpu');
+
+// Unlock frame rate for smooth animations
+app.commandLine.appendSwitch('disable-frame-rate-limit');
+app.commandLine.appendSwitch('disable-gpu-vsync');
+
+// Core rendering pipeline
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('enable-gpu-compositing');
 app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
 app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
 
-// Conservative optimizations for all platforms (good for laptops, no visible difference)
+// Rasterization optimizations
+app.commandLine.appendSwitch('enable-oop-rasterization');
+app.commandLine.appendSwitch('canvas-oop-rasterization');
+app.commandLine.appendSwitch('in-process-gpu');
+app.commandLine.appendSwitch('num-raster-threads', '4');
+
+// Hardware overlays and raw draw
+app.commandLine.appendSwitch('enable-hardware-overlays', 'single-fullscreen,single-on-top,underlay');
+app.commandLine.appendSwitch('enable-raw-draw');
+
+// Quality settings
 app.commandLine.appendSwitch('disable-composited-antialiasing');
 app.commandLine.appendSwitch('gpu-rasterization-msaa-sample-count', '0');
-app.commandLine.appendSwitch('num-raster-threads', '2');
-app.commandLine.appendSwitch('disable-hang-monitor');
+
+// High DPI and timing
 app.commandLine.appendSwitch('high-dpi-support', '1');
+app.commandLine.appendSwitch('enable-highres-timer');
+
+// Keep renderer active and prevent throttling
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-hang-monitor');
+
+logger.info("Full performance GPU flags enabled");
 
 // HEVC/H.265 hardware decoding support
 if (process.platform === "win32") {
@@ -110,9 +138,11 @@ app.commandLine.appendSwitch('enable-async-dns');
 
 async function createWindow() {
     // Get the icon path - use different paths for packaged vs development
+    // Windows needs .ico format, other platforms use .png
+    const iconFile = process.platform === "win32" ? "icon.ico" : "icon.png";
     const iconPath = app.isPackaged
-        ? join(process.resourcesPath, "images", "icon.png")
-        : join(__dirname, "..", "images", "icon.png");
+        ? join(process.resourcesPath, "images", iconFile)
+        : join(__dirname, "..", "images", iconFile);
 
     // Create native image from the icon path
     const appIcon = nativeImage.createFromPath(iconPath);
@@ -161,6 +191,46 @@ async function createWindow() {
     });
 
     mainWindow.setMenu(null);
+
+    // Log GPU info and display refresh rate on startup
+    mainWindow.webContents.on('did-finish-load', () => {
+        // Log display info from main process
+        const refreshRate = getDisplayRefreshRate();
+        logger.info(`Display refresh rate: ${refreshRate}Hz`);
+
+        mainWindow?.webContents.executeJavaScript(`
+            (async () => {
+                const canvas = document.createElement('canvas');
+                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                if (gl) {
+                    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                    if (debugInfo) {
+                        console.log('[GPU] Vendor:', gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL));
+                        console.log('[GPU] Renderer:', gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL));
+                    }
+                }
+                console.log('[Display] Refresh rate: ${refreshRate}Hz');
+
+                // Wait 3 seconds for page to fully load before measuring FPS
+                setTimeout(() => {
+                    console.log('[Performance] Measuring render FPS (vsync-paced)...');
+                    let frames = 0;
+                    const start = performance.now();
+                    const countFrames = () => {
+                        frames++;
+                        if (performance.now() - start < 1000) {
+                            requestAnimationFrame(countFrames);
+                        } else {
+                            console.log('[Performance] Measured FPS:', frames, '(should match display refresh rate)');
+                            console.log('[Performance] If FPS is lower than display refresh, check for layout thrashing');
+                        }
+                    };
+                    requestAnimationFrame(countFrames);
+                }, 3000);
+            })();
+        `).catch(() => {});
+    });
+
     mainWindow.loadURL(URLS.STREMIO_WEB);
 
     // Show window when ready to prevent white flash and ensure smooth first paint

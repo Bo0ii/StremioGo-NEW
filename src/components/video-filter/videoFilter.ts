@@ -2,7 +2,7 @@ import TemplateCache from "../../utils/templateCache";
 import Helpers from "../../utils/Helpers";
 import logger from "../../utils/logger";
 import { STORAGE_KEYS, PLAYER_DEFAULTS } from "../../constants";
-import Anime4KRenderer, { Anime4KMode } from "../../utils/Anime4KRenderer";
+import Anime4KWebGL, { Anime4KMode } from "../../utils/Anime4KWebGL";
 
 interface FilterSettings {
     sharpness: number;
@@ -14,14 +14,14 @@ interface FilterSettings {
     shadows: number;
     denoise: number;
     edgeEnhance: number;
-    upscaleCAS: number;
-    upscaleLanczos: number;
+    fakeHDR: boolean;
+    animeEnhance: boolean;
     anime4kMode: Anime4KMode;
-    anime4kStrength: number;
+    motionSmooth: number;
 }
 
-// Numeric-only settings for slider handling
-type NumericFilterSettings = Omit<FilterSettings, 'anime4kMode'>;
+// Numeric-only settings for slider handling (excludes boolean toggles and string modes)
+type NumericFilterSettings = Omit<FilterSettings, 'fakeHDR' | 'animeEnhance' | 'anime4kMode'>;
 
 // Default accent color (purple) - used when user hasn't set a custom color
 const DEFAULT_ACCENT_COLOR = '#7b5bf5';
@@ -33,7 +33,9 @@ class VideoFilter {
     private isInitialized: boolean = false;
     private settings: FilterSettings;
     private svgFilterId: string = 'video-sharpen-filter';
-    private anime4kRenderer: Anime4KRenderer | null = null;
+    private hdrFilterId: string = 'video-hdr-filter';
+    private animeFilterId: string = 'video-anime-filter';
+    private anime4kRenderer: Anime4KWebGL | null = null;
 
     constructor() {
         this.settings = this.loadSettings();
@@ -89,10 +91,10 @@ class VideoFilter {
             shadows: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_SHADOWS) || PLAYER_DEFAULTS.VIDEO_FILTER_SHADOWS.toString()),
             denoise: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_DENOISE) || PLAYER_DEFAULTS.VIDEO_FILTER_DENOISE.toString()),
             edgeEnhance: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_EDGE_ENHANCE) || PLAYER_DEFAULTS.VIDEO_FILTER_EDGE_ENHANCE.toString()),
-            upscaleCAS: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_UPSCALE_CAS) || PLAYER_DEFAULTS.VIDEO_FILTER_UPSCALE_CAS.toString()),
-            upscaleLanczos: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_UPSCALE_LANCZOS) || PLAYER_DEFAULTS.VIDEO_FILTER_UPSCALE_LANCZOS.toString()),
+            fakeHDR: localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_FAKE_HDR) === 'true',
+            animeEnhance: localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_ANIME_ENHANCE) === 'true',
             anime4kMode: (localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_ANIME4K_MODE) || PLAYER_DEFAULTS.VIDEO_FILTER_ANIME4K_MODE) as Anime4KMode,
-            anime4kStrength: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_ANIME4K_STRENGTH) || PLAYER_DEFAULTS.VIDEO_FILTER_ANIME4K_STRENGTH.toString()),
+            motionSmooth: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_MOTION_SMOOTH) || PLAYER_DEFAULTS.VIDEO_FILTER_MOTION_SMOOTH.toString()),
         };
     }
 
@@ -106,10 +108,10 @@ class VideoFilter {
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_SHADOWS, this.settings.shadows.toString());
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_DENOISE, this.settings.denoise.toString());
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_EDGE_ENHANCE, this.settings.edgeEnhance.toString());
-        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_UPSCALE_CAS, this.settings.upscaleCAS.toString());
-        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_UPSCALE_LANCZOS, this.settings.upscaleLanczos.toString());
+        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_FAKE_HDR, this.settings.fakeHDR.toString());
+        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_ANIME_ENHANCE, this.settings.animeEnhance.toString());
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_ANIME4K_MODE, this.settings.anime4kMode);
-        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_ANIME4K_STRENGTH, this.settings.anime4kStrength.toString());
+        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_MOTION_SMOOTH, this.settings.motionSmooth.toString());
     }
 
     public init(): void {
@@ -139,19 +141,24 @@ class VideoFilter {
     private initAnime4K(): void {
         if (!this.video) return;
 
+        // Check WebGL support
+        if (!Anime4KWebGL.isSupported()) {
+            logger.warn('[VideoFilter] Anime4K WebGL not supported on this device');
+            return;
+        }
+
         // Create Anime4K renderer
-        this.anime4kRenderer = new Anime4KRenderer();
+        this.anime4kRenderer = new Anime4KWebGL();
         const success = this.anime4kRenderer.init(this.video);
 
         if (success) {
-            // Apply saved settings
-            this.anime4kRenderer.setStrength(this.settings.anime4kStrength / 100);
+            // Apply saved mode
             if (this.settings.anime4kMode !== 'off') {
                 this.anime4kRenderer.setMode(this.settings.anime4kMode);
             }
-            logger.info('[VideoFilter] Anime4K renderer initialized');
+            logger.info('[VideoFilter] Anime4K WebGL initialized');
         } else {
-            logger.warn('[VideoFilter] Failed to initialize Anime4K renderer');
+            logger.warn('[VideoFilter] Failed to initialize Anime4K WebGL');
             this.anime4kRenderer = null;
         }
     }
@@ -179,10 +186,11 @@ class VideoFilter {
         template = template.replace(/\{\{\s*shadows\s*\}\}/g, this.settings.shadows.toString());
         template = template.replace(/\{\{\s*denoise\s*\}\}/g, this.settings.denoise.toString());
         template = template.replace(/\{\{\s*edgeEnhance\s*\}\}/g, this.settings.edgeEnhance.toString());
-        template = template.replace(/\{\{\s*upscaleCAS\s*\}\}/g, this.settings.upscaleCAS.toString());
-        template = template.replace(/\{\{\s*upscaleLanczos\s*\}\}/g, this.settings.upscaleLanczos.toString());
+        template = template.replace(/\{\{\s*fakeHDRChecked\s*\}\}/g, this.settings.fakeHDR ? 'checked' : '');
+        template = template.replace(/\{\{\s*animeEnhanceChecked\s*\}\}/g, this.settings.animeEnhance ? 'checked' : '');
         template = template.replace(/\{\{\s*anime4kMode\s*\}\}/g, this.settings.anime4kMode);
-        template = template.replace(/\{\{\s*anime4kStrength\s*\}\}/g, this.settings.anime4kStrength.toString());
+        template = template.replace(/\{\{\s*motionSmooth\s*\}\}/g, this.settings.motionSmooth.toString());
+        template = template.replace(/\{\{\s*anime4kSupported\s*\}\}/g, Anime4KWebGL.isSupported() ? '' : 'disabled');
 
         // Replace accent color placeholders
         template = template.replace(/\{\{\s*accentColor\s*\}\}/g, accentColor);
@@ -317,48 +325,38 @@ class VideoFilter {
 
                     <!-- ============ SHADOWS ADJUSTMENT ============ -->
                     <!-- Uses gamma curve to target dark areas only -->
-                    <feComponentTransfer id="shadows-transfer" in="highlights-adjusted" result="shadows-adjusted">
+                    <feComponentTransfer id="shadows-transfer" in="highlights-adjusted" result="final">
                         <feFuncR id="shadows-r" type="gamma" amplitude="1" exponent="1" offset="0"/>
                         <feFuncG id="shadows-g" type="gamma" amplitude="1" exponent="1" offset="0"/>
                         <feFuncB id="shadows-b" type="gamma" amplitude="1" exponent="1" offset="0"/>
                     </feComponentTransfer>
+                </filter>
 
-                    <!-- ============ CAS UPSCALER (AMD FSR-style) ============ -->
-                    <!-- Contrast-Adaptive Sharpening: enhances edges based on local contrast -->
-                    <!-- Step 1: Create blur to detect low-contrast areas -->
-                    <feGaussianBlur id="cas-blur" in="shadows-adjusted" stdDeviation="0.5" result="cas-blurred"/>
+                <!-- ============ FAKE HDR FILTER ============ -->
+                <!-- HDR-like: expand dynamic range, boost contrast & saturation -->
+                <filter id="${this.hdrFilterId}" color-interpolation-filters="sRGB">
+                    <!-- Step 1: Slight contrast boost (reduced exposure) -->
+                    <feComponentTransfer in="SourceGraphic" result="hdr-contrast">
+                        <feFuncR type="linear" slope="1.08" intercept="-0.04"/>
+                        <feFuncG type="linear" slope="1.08" intercept="-0.04"/>
+                        <feFuncB type="linear" slope="1.08" intercept="-0.04"/>
+                    </feComponentTransfer>
 
-                    <!-- Step 2: Calculate local contrast (difference from blur) -->
-                    <feComposite operator="arithmetic" in="shadows-adjusted" in2="cas-blurred"
-                        k1="0" k2="1" k3="-1" k4="0" result="cas-contrast"/>
+                    <!-- Step 2: Subtle saturation boost +6% -->
+                    <feColorMatrix type="saturate" values="1.06" in="hdr-contrast" result="hdr-final"/>
+                </filter>
 
-                    <!-- Step 3: Detect edges for adaptive sharpening mask -->
-                    <feConvolveMatrix order="3" in="shadows-adjusted" preserveAlpha="true"
-                        kernelMatrix="0 -1 0 -1 4 -1 0 -1 0" result="cas-edges"/>
+                <!-- ============ ANIME ENHANCE FILTER ============ -->
+                <!-- Subtle line art enhancement for anime -->
+                <filter id="${this.animeFilterId}" color-interpolation-filters="sRGB">
+                    <!-- Step 1: Gentle sharpening kernel (subtle edge enhancement) -->
+                    <feConvolveMatrix order="3" in="SourceGraphic" preserveAlpha="true"
+                        kernelMatrix="0 -0.08 0
+                                      -0.08  1.32 -0.08
+                                      0 -0.08 0" result="anime-sharpened"/>
 
-                    <!-- Step 4: Convert to luminance mask -->
-                    <feColorMatrix type="saturate" values="0" in="cas-edges" result="cas-edge-lum"/>
-
-                    <!-- Step 5: Apply CAS sharpening kernel (adaptive based on contrast) -->
-                    <feConvolveMatrix id="cas-sharpen" order="3" in="shadows-adjusted" preserveAlpha="true"
-                        kernelMatrix="0 0 0 0 1 0 0 0 0" result="cas-sharpened"/>
-
-                    <!-- Step 6: Blend sharpened with original based on edge strength -->
-                    <feComposite id="cas-blend" operator="arithmetic" in="cas-sharpened" in2="shadows-adjusted"
-                        k1="0" k2="1" k3="0" k4="0" result="cas-result"/>
-
-                    <!-- ============ LANCZOS-STYLE UPSCALER ============ -->
-                    <!-- Multi-pass enhancement for smooth upscaling (anime/animation) -->
-                    <!-- Step 1: Slight blur to reduce aliasing artifacts -->
-                    <feGaussianBlur id="lanczos-smooth" in="cas-result" stdDeviation="0" result="lanczos-smoothed"/>
-
-                    <!-- Step 2: Edge-preserving detail enhancement -->
-                    <feConvolveMatrix id="lanczos-detail" order="5" in="lanczos-smoothed" preserveAlpha="true"
-                        kernelMatrix="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 0 0  0 0 0 0 0" result="lanczos-detailed"/>
-
-                    <!-- Step 3: Anti-aliasing pass for smooth edges -->
-                    <feConvolveMatrix id="lanczos-antialias" order="3" in="lanczos-detailed" preserveAlpha="true"
-                        kernelMatrix="0 0 0 0 1 0 0 0 0" result="final"/>
+                    <!-- Step 2: Tiny saturation boost for anime colors -->
+                    <feColorMatrix type="saturate" values="1.04" in="anime-sharpened" result="anime-final"/>
                 </filter>
             </defs>
         `;
@@ -498,87 +496,6 @@ class VideoFilter {
         });
     }
 
-    private updateUpscaleCAS(intensity: number): void {
-        // CAS (Contrast-Adaptive Sharpening) - AMD FSR 1.0 style
-        // Applies stronger sharpening to edges while preserving smooth areas
-        const casSharpen = document.getElementById('cas-sharpen');
-        const casBlend = document.getElementById('cas-blend');
-        if (!casSharpen || !casBlend) return;
-
-        if (intensity === 0) {
-            // Identity kernel when disabled
-            casSharpen.setAttribute('kernelMatrix', '0 0 0 0 1 0 0 0 0');
-            casBlend.setAttribute('k2', '1');
-            casBlend.setAttribute('k3', '0');
-            return;
-        }
-
-        // intensity 0-100 maps to sharpening strength
-        // CAS uses an edge-aware kernel that enhances contrast along edges
-        const strength = intensity / 100;
-
-        // Enhanced sharpening kernel - stronger than regular sharpening
-        // Negative values around center pull contrast toward edges
-        const k = strength * 0.8; // Max edge weight
-        const center = 1 + 8 * k;
-        const edge = -k;
-        const corner = -k * 0.5;
-
-        const kernel = `${corner} ${edge} ${corner} ${edge} ${center} ${edge} ${corner} ${edge} ${corner}`;
-        casSharpen.setAttribute('kernelMatrix', kernel);
-
-        // Blend: stronger effect at higher intensity
-        // k2 = sharpened contribution, k3 = original contribution (for blending)
-        const sharpWeight = Math.min(1, strength * 1.2); // Up to 120% sharpened
-        casBlend.setAttribute('k2', sharpWeight.toFixed(3));
-        casBlend.setAttribute('k3', (1 - sharpWeight * 0.2).toFixed(3)); // Keep some original
-    }
-
-    private updateUpscaleLanczos(intensity: number): void {
-        // Lanczos-style upscaling enhancement
-        // Smooths aliasing while enhancing fine detail - great for anime/animation
-        const lanczosSmooth = document.getElementById('lanczos-smooth');
-        const lanczosDetail = document.getElementById('lanczos-detail');
-        const lanczosAntialias = document.getElementById('lanczos-antialias');
-        if (!lanczosSmooth || !lanczosDetail || !lanczosAntialias) return;
-
-        if (intensity === 0) {
-            // Pass-through when disabled
-            lanczosSmooth.setAttribute('stdDeviation', '0');
-            lanczosDetail.setAttribute('kernelMatrix', '0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 0 0  0 0 0 0 0');
-            lanczosAntialias.setAttribute('kernelMatrix', '0 0 0 0 1 0 0 0 0');
-            return;
-        }
-
-        const strength = intensity / 100;
-
-        // Step 1: Gentle smoothing to reduce jaggies (subtle blur)
-        // Lower stdDeviation to avoid over-softening
-        const smoothAmount = strength * 0.3; // Max 0.3 blur
-        lanczosSmooth.setAttribute('stdDeviation', smoothAmount.toFixed(2));
-
-        // Step 2: 5x5 Lanczos-approximation kernel for detail enhancement
-        // This simulates the ringing/sharpening effect of Lanczos interpolation
-        // which enhances fine textures and line art
-        const d = strength * 0.15; // Detail enhancement strength
-        const c = 1 + 8 * d; // Center weight
-        const e = -d; // Edge weight (negative for sharpening)
-        const f = d * 0.25; // Far corner (positive for subtle ringing)
-
-        // 5x5 kernel approximating Lanczos windowed sinc
-        const detailKernel = `${f} ${e} ${e} ${e} ${f}  ${e} ${e} ${-d*2} ${e} ${e}  ${e} ${-d*2} ${c} ${-d*2} ${e}  ${e} ${e} ${-d*2} ${e} ${e}  ${f} ${e} ${e} ${e} ${f}`;
-        lanczosDetail.setAttribute('kernelMatrix', detailKernel);
-
-        // Step 3: Anti-aliasing kernel for smooth edges
-        // Subtle averaging to smooth out any remaining jaggies
-        const aa = strength * 0.1; // Anti-alias strength
-        const aaCenter = 1 - 4 * aa;
-        const aaEdge = aa;
-
-        const aaKernel = `0 ${aaEdge} 0 ${aaEdge} ${aaCenter} ${aaEdge} 0 ${aaEdge} 0`;
-        lanczosAntialias.setAttribute('kernelMatrix', aaKernel);
-    }
-
     private applyFilters(): void {
         if (!this.video) return;
 
@@ -600,18 +517,16 @@ class VideoFilter {
             cssFilters.push(`saturate(${this.settings.saturation / 100})`);
         }
 
-        // Advanced SVG filters: sharpness, temperature, denoise, edge enhancement, highlights, shadows, upscalers
+        // Advanced SVG filters: sharpness, temperature, denoise, edge enhancement, highlights, shadows
         const hasSharpen = this.settings.sharpness > 0;
         const hasTemperature = this.settings.temperature !== 0;
         const hasDenoise = this.settings.denoise > 0;
         const hasEdgeEnhance = this.settings.edgeEnhance > 0;
         const hasHighlights = this.settings.highlights !== 100;
         const hasShadows = this.settings.shadows !== 100;
-        const hasUpscaleCAS = this.settings.upscaleCAS > 0;
-        const hasUpscaleLanczos = this.settings.upscaleLanczos > 0;
 
         // Always apply SVG filter if any advanced effect is active
-        if (hasSharpen || hasTemperature || hasDenoise || hasEdgeEnhance || hasHighlights || hasShadows || hasUpscaleCAS || hasUpscaleLanczos) {
+        if (hasSharpen || hasTemperature || hasDenoise || hasEdgeEnhance || hasHighlights || hasShadows) {
             cssFilters.push(`url(#${this.svgFilterId})`);
 
             // Update all SVG filter parameters
@@ -621,8 +536,16 @@ class VideoFilter {
             this.updateEdgeEnhancement(this.settings.edgeEnhance);
             this.updateHighlights(this.settings.highlights);
             this.updateShadows(this.settings.shadows);
-            this.updateUpscaleCAS(this.settings.upscaleCAS);
-            this.updateUpscaleLanczos(this.settings.upscaleLanczos);
+        }
+
+        // Apply Fake HDR filter if enabled
+        if (this.settings.fakeHDR) {
+            cssFilters.push(`url(#${this.hdrFilterId})`);
+        }
+
+        // Apply Anime Enhance filter if enabled
+        if (this.settings.animeEnhance) {
+            cssFilters.push(`url(#${this.animeFilterId})`);
         }
 
         // Apply combined filter to video
@@ -636,8 +559,9 @@ class VideoFilter {
             document.head.appendChild(styleEl);
         }
 
+        // Apply to both video AND anime4k canvas so filters stack with Anime4K
         styleEl.textContent = `
-            video {
+            video, #anime4k-canvas {
                 filter: ${filterString} !important;
             }
         `;
@@ -672,14 +596,34 @@ class VideoFilter {
         this.setupSlider('video-filter-shadows', 'shadows', 'shadows-value', '%');
         this.setupSlider('video-filter-denoise', 'denoise', 'denoise-value', '%');
         this.setupSlider('video-filter-edge-enhance', 'edgeEnhance', 'edge-enhance-value', '%');
-        this.setupSlider('video-filter-upscale-cas', 'upscaleCAS', 'upscale-cas-value', '%');
-        this.setupSlider('video-filter-upscale-lanczos', 'upscaleLanczos', 'upscale-lanczos-value', '%');
+
+        // Fake HDR toggle
+        const fakeHDRToggle = document.getElementById('video-filter-fake-hdr') as HTMLInputElement;
+        if (fakeHDRToggle) {
+            fakeHDRToggle.addEventListener('change', () => {
+                this.settings.fakeHDR = fakeHDRToggle.checked;
+                this.applyFilters();
+                this.saveSettings();
+                logger.info(`[VideoFilter] Fake HDR ${this.settings.fakeHDR ? 'enabled' : 'disabled'}`);
+            });
+        }
+
+        // Anime Enhance toggle
+        const animeEnhanceToggle = document.getElementById('video-filter-anime-enhance') as HTMLInputElement;
+        if (animeEnhanceToggle) {
+            animeEnhanceToggle.addEventListener('change', () => {
+                this.settings.animeEnhance = animeEnhanceToggle.checked;
+                this.applyFilters();
+                this.saveSettings();
+                logger.info(`[VideoFilter] Anime Enhance ${this.settings.animeEnhance ? 'enabled' : 'disabled'}`);
+            });
+        }
 
         // Anime4K mode selector
         this.setupAnime4KModeSelector();
 
-        // Anime4K strength slider
-        this.setupSlider('video-filter-anime4k-strength', 'anime4kStrength', 'anime4k-strength-value', '%');
+        // Motion Smooth slider
+        this.setupSlider('video-filter-motion-smooth', 'motionSmooth', 'motion-smooth-value', '%');
 
         // Reset button
         document.getElementById('video-filter-reset')?.addEventListener('click', () => {
@@ -723,16 +667,14 @@ class VideoFilter {
         // Save on change (when user releases slider)
         slider.addEventListener('change', () => {
             this.saveSettings();
-
-            // Special handling for Anime4K strength
-            if (settingKey === 'anime4kStrength' && this.anime4kRenderer) {
-                this.anime4kRenderer.setStrength(this.settings.anime4kStrength / 100);
-            }
         });
     }
 
     private setupAnime4KModeSelector(): void {
         const modeButtons = document.querySelectorAll('.anime4k-mode-btn');
+        const warningPopup = document.getElementById('bo0ii-warning-popup');
+        const cancelBtn = document.getElementById('bo0ii-cancel-btn');
+        const confirmBtn = document.getElementById('bo0ii-confirm-btn');
 
         // Set initial active state based on current mode
         modeButtons.forEach(btn => {
@@ -742,27 +684,57 @@ class VideoFilter {
             }
         });
 
+        // Helper to apply mode
+        const applyMode = (mode: Anime4KMode) => {
+            // Update UI
+            modeButtons.forEach(b => b.classList.remove('active'));
+            const activeBtn = document.querySelector(`.anime4k-mode-btn[data-mode="${mode}"]`);
+            activeBtn?.classList.add('active');
+
+            // Update settings
+            this.settings.anime4kMode = mode;
+            this.saveSettings();
+
+            // Apply to renderer
+            if (this.anime4kRenderer) {
+                this.anime4kRenderer.setMode(mode);
+            }
+
+            logger.info(`[VideoFilter] Anime4K mode changed to: ${mode}`);
+        };
+
         // Add click handlers
         modeButtons.forEach(btn => {
             btn.addEventListener('click', () => {
                 const mode = btn.getAttribute('data-mode') as Anime4KMode;
                 if (!mode) return;
 
-                // Update UI
-                modeButtons.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-
-                // Update settings
-                this.settings.anime4kMode = mode;
-                this.saveSettings();
-
-                // Apply to renderer
-                if (this.anime4kRenderer) {
-                    this.anime4kRenderer.setMode(mode);
+                // Special handling for Bo0ii mode - show warning first
+                if (mode === 'bo0ii') {
+                    warningPopup?.classList.remove('hidden');
+                    return;
                 }
 
-                logger.info(`[VideoFilter] Anime4K mode changed to: ${mode}`);
+                applyMode(mode);
             });
+        });
+
+        // Warning popup cancel button
+        cancelBtn?.addEventListener('click', () => {
+            warningPopup?.classList.add('hidden');
+        });
+
+        // Warning popup confirm button
+        confirmBtn?.addEventListener('click', () => {
+            warningPopup?.classList.add('hidden');
+            applyMode('bo0ii');
+        });
+
+        // Close popup when clicking outside content
+        warningPopup?.addEventListener('click', (e) => {
+            if (e.target === warningPopup) {
+                warningPopup.classList.add('hidden');
+            }
         });
     }
 
@@ -799,10 +771,10 @@ class VideoFilter {
             shadows: PLAYER_DEFAULTS.VIDEO_FILTER_SHADOWS,
             denoise: PLAYER_DEFAULTS.VIDEO_FILTER_DENOISE,
             edgeEnhance: PLAYER_DEFAULTS.VIDEO_FILTER_EDGE_ENHANCE,
-            upscaleCAS: PLAYER_DEFAULTS.VIDEO_FILTER_UPSCALE_CAS,
-            upscaleLanczos: PLAYER_DEFAULTS.VIDEO_FILTER_UPSCALE_LANCZOS,
+            fakeHDR: PLAYER_DEFAULTS.VIDEO_FILTER_FAKE_HDR,
+            animeEnhance: PLAYER_DEFAULTS.VIDEO_FILTER_ANIME_ENHANCE,
             anime4kMode: PLAYER_DEFAULTS.VIDEO_FILTER_ANIME4K_MODE as Anime4KMode,
-            anime4kStrength: PLAYER_DEFAULTS.VIDEO_FILTER_ANIME4K_STRENGTH,
+            motionSmooth: PLAYER_DEFAULTS.VIDEO_FILTER_MOTION_SMOOTH,
         };
 
         // Update sliders
@@ -815,20 +787,30 @@ class VideoFilter {
         this.updateSlider('video-filter-shadows', 'shadows-value', this.settings.shadows, '%');
         this.updateSlider('video-filter-denoise', 'denoise-value', this.settings.denoise, '%');
         this.updateSlider('video-filter-edge-enhance', 'edge-enhance-value', this.settings.edgeEnhance, '%');
-        this.updateSlider('video-filter-upscale-cas', 'upscale-cas-value', this.settings.upscaleCAS, '%');
-        this.updateSlider('video-filter-upscale-lanczos', 'upscale-lanczos-value', this.settings.upscaleLanczos, '%');
-        this.updateSlider('video-filter-anime4k-strength', 'anime4k-strength-value', this.settings.anime4kStrength, '%');
 
-        // Reset Anime4K mode buttons
-        document.querySelectorAll('.anime4k-mode-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.getAttribute('data-mode') === 'off');
-        });
-
-        // Reset Anime4K renderer
-        if (this.anime4kRenderer) {
-            this.anime4kRenderer.setMode('off');
-            this.anime4kRenderer.setStrength(this.settings.anime4kStrength / 100);
+        // Reset Fake HDR toggle
+        const fakeHDRToggle = document.getElementById('video-filter-fake-hdr') as HTMLInputElement;
+        if (fakeHDRToggle) {
+            fakeHDRToggle.checked = this.settings.fakeHDR;
         }
+
+        // Reset Anime Enhance toggle
+        const animeEnhanceToggle = document.getElementById('video-filter-anime-enhance') as HTMLInputElement;
+        if (animeEnhanceToggle) {
+            animeEnhanceToggle.checked = this.settings.animeEnhance;
+        }
+
+        // Reset Anime4K mode selector
+        const anime4kModeButtons = document.querySelectorAll('.anime4k-mode-btn');
+        anime4kModeButtons.forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-mode') === this.settings.anime4kMode);
+        });
+        if (this.anime4kRenderer) {
+            this.anime4kRenderer.setMode(this.settings.anime4kMode);
+        }
+
+        // Reset Motion Smooth slider
+        this.updateSlider('video-filter-motion-smooth', 'motion-smooth-value', this.settings.motionSmooth, '%');
 
         this.applyFilters();
         this.saveSettings();
