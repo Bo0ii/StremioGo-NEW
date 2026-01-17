@@ -53,9 +53,13 @@ function initializeUpdateModal(): void {
     installButton.addEventListener('click', async () => {
         if (updateState === 'idle') {
             await startDownload();
-        } else if (updateState === 'ready_to_install') {
-            // User clicked Restart button - start countdown and installation
-            startRestartCountdown();
+        } else if (updateState === 'ready_to_install' || updateState === 'restarting') {
+            // User clicked Restart button - close instantly (skip/cancel countdown)
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            performInstallation();
         }
     });
 
@@ -243,7 +247,7 @@ function onDownloadComplete(): void {
 
     // Download complete - ready to restart and install
     statusText.textContent = 'Download complete! Ready to restart.';
-    detailsText.textContent = 'Click Restart to close the app and continue installation. The app will reopen automatically with the new version.';
+    detailsText.textContent = 'Click Restart to close immediately, or wait for auto-restart.';
 
     // Update button to show "Restart"
     const buttonLabel = installButton.querySelector('.label-wbfsE');
@@ -257,6 +261,9 @@ function onDownloadComplete(): void {
     // Re-enable ignore button
     (ignoreButton as HTMLElement).style.opacity = '1';
     (ignoreButton as HTMLElement).style.pointerEvents = 'auto';
+
+    // Auto-start the 10-second countdown (user can click Restart to close instantly)
+    startRestartCountdown();
 }
 
 function onUpdateError(stage: string, message: string): void {

@@ -340,17 +340,17 @@ class VideoFilter {
                 <!-- ============ FAKE HDR FILTER ============ -->
                 <!-- HDR-like tone mapping: preserve shadows, lift mids & highlights, no clipping -->
                 <filter id="${this.hdrFilterId}" color-interpolation-filters="sRGB">
-                    <!-- S-curve tone mapping: shadows preserved, moderate highlight lift -->
+                    <!-- S-curve tone mapping: shadows preserved, subtle highlight lift -->
                     <!-- Input:  0    0.1  0.2  0.3  0.4  0.5  0.6  0.7  0.8  0.9  1.0 -->
-                    <!-- Output: 0   0.09 0.18 0.29 0.41 0.54 0.67 0.79 0.88 0.95 1.0 -->
+                    <!-- Output: 0   0.09 0.18 0.29 0.40 0.52 0.64 0.75 0.84 0.93 1.0 -->
                     <feComponentTransfer in="SourceGraphic" result="hdr-tonemapped">
-                        <feFuncR type="table" tableValues="0 0.09 0.18 0.29 0.41 0.54 0.67 0.79 0.88 0.95 1.0"/>
-                        <feFuncG type="table" tableValues="0 0.09 0.18 0.29 0.41 0.54 0.67 0.79 0.88 0.95 1.0"/>
-                        <feFuncB type="table" tableValues="0 0.09 0.18 0.29 0.41 0.54 0.67 0.79 0.88 0.95 1.0"/>
+                        <feFuncR type="table" tableValues="0 0.09 0.18 0.29 0.40 0.52 0.64 0.75 0.84 0.93 1.0"/>
+                        <feFuncG type="table" tableValues="0 0.09 0.18 0.29 0.40 0.52 0.64 0.75 0.84 0.93 1.0"/>
+                        <feFuncB type="table" tableValues="0 0.09 0.18 0.29 0.40 0.52 0.64 0.75 0.84 0.93 1.0"/>
                     </feComponentTransfer>
 
-                    <!-- Subtle saturation boost (+2%) -->
-                    <feColorMatrix type="saturate" values="1.02" in="hdr-tonemapped" result="hdr-final"/>
+                    <!-- Subtle saturation boost (+1%) -->
+                    <feColorMatrix type="saturate" values="1.01" in="hdr-tonemapped" result="hdr-final"/>
                 </filter>
 
                 <!-- ============ ANIME ENHANCE FILTER ============ -->
