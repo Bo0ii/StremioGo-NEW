@@ -923,6 +923,59 @@ class StremioService {
             return false;
         }
     }
+
+    /**
+     * Forcefully terminates ALL Stremio-related processes regardless of who started them.
+     * This should be called when the app is closing to ensure no orphan processes remain.
+     */
+    public static forceTerminate(): void {
+        const execSync = require('child_process').execSync;
+        this.logger.info("Force terminating all Stremio processes...");
+
+        try {
+            if (process.platform === 'win32') {
+                // Windows: Kill stremio-service.exe and stremio-runtime.exe
+                try {
+                    execSync('taskkill /F /IM stremio-service.exe /T', { stdio: 'ignore' });
+                    this.logger.info("Killed stremio-service.exe");
+                } catch (e) { /* Process might not exist */ }
+
+                try {
+                    execSync('taskkill /F /IM stremio-runtime.exe', { stdio: 'ignore' });
+                    this.logger.info("Killed stremio-runtime.exe");
+                } catch (e) { /* Process might not exist */ }
+            } else if (process.platform === 'darwin') {
+                // macOS: Kill stremio-service and any related node processes
+                try {
+                    execSync('pkill -9 -f stremio-service', { stdio: 'ignore' });
+                    this.logger.info("Killed stremio-service processes");
+                } catch (e) { /* Process might not exist */ }
+
+                try {
+                    execSync('pkill -9 -f "server.js"', { stdio: 'ignore' });
+                    this.logger.info("Killed server.js processes");
+                } catch (e) { /* Process might not exist */ }
+            } else {
+                // Linux: Kill stremio-service and related processes
+                try {
+                    execSync('pkill -9 -f stremio-service', { stdio: 'ignore' });
+                    this.logger.info("Killed stremio-service processes");
+                } catch (e) { /* Process might not exist */ }
+
+                try {
+                    execSync('pkill -9 -f "server.js"', { stdio: 'ignore' });
+                    this.logger.info("Killed server.js processes");
+                } catch (e) { /* Process might not exist */ }
+            }
+
+            // Reset tracking flags
+            this.appStartedService = false;
+            this.servicePid = null;
+            this.logger.info("Force termination complete.");
+        } catch (error) {
+            this.logger.error(`Error during force termination: ${(error as Error).message}`);
+        }
+    }
     
     private static getStremioServicePid(): number | null {
         switch (process.platform) {

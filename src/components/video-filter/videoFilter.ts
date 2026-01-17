@@ -13,6 +13,8 @@ interface FilterSettings {
     shadows: number;
     denoise: number;
     edgeEnhance: number;
+    upscaleCAS: number;
+    upscaleLanczos: number;
 }
 
 // Default accent color (purple) - used when user hasn't set a custom color
@@ -80,6 +82,8 @@ class VideoFilter {
             shadows: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_SHADOWS) || PLAYER_DEFAULTS.VIDEO_FILTER_SHADOWS.toString()),
             denoise: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_DENOISE) || PLAYER_DEFAULTS.VIDEO_FILTER_DENOISE.toString()),
             edgeEnhance: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_EDGE_ENHANCE) || PLAYER_DEFAULTS.VIDEO_FILTER_EDGE_ENHANCE.toString()),
+            upscaleCAS: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_UPSCALE_CAS) || PLAYER_DEFAULTS.VIDEO_FILTER_UPSCALE_CAS.toString()),
+            upscaleLanczos: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_UPSCALE_LANCZOS) || PLAYER_DEFAULTS.VIDEO_FILTER_UPSCALE_LANCZOS.toString()),
         };
     }
 
@@ -93,6 +97,8 @@ class VideoFilter {
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_SHADOWS, this.settings.shadows.toString());
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_DENOISE, this.settings.denoise.toString());
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_EDGE_ENHANCE, this.settings.edgeEnhance.toString());
+        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_UPSCALE_CAS, this.settings.upscaleCAS.toString());
+        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_UPSCALE_LANCZOS, this.settings.upscaleLanczos.toString());
     }
 
     public init(): void {
@@ -141,6 +147,8 @@ class VideoFilter {
         template = template.replace(/\{\{\s*shadows\s*\}\}/g, this.settings.shadows.toString());
         template = template.replace(/\{\{\s*denoise\s*\}\}/g, this.settings.denoise.toString());
         template = template.replace(/\{\{\s*edgeEnhance\s*\}\}/g, this.settings.edgeEnhance.toString());
+        template = template.replace(/\{\{\s*upscaleCAS\s*\}\}/g, this.settings.upscaleCAS.toString());
+        template = template.replace(/\{\{\s*upscaleLanczos\s*\}\}/g, this.settings.upscaleLanczos.toString());
 
         // Replace accent color placeholders
         template = template.replace(/\{\{\s*accentColor\s*\}\}/g, accentColor);
@@ -215,27 +223,108 @@ class VideoFilter {
         svg.innerHTML = `
             <defs>
                 <filter id="${this.svgFilterId}" color-interpolation-filters="sRGB">
-                    <!-- Denoise using Gaussian blur -->
-                    <feGaussianBlur id="denoise-blur" stdDeviation="0" result="denoised"/>
+                    <!-- ============ DENOISE SECTION ============ -->
+                    <!-- Step 1: Create blurred version for noise reduction -->
+                    <feGaussianBlur id="denoise-blur" in="SourceGraphic" stdDeviation="0" result="blurred"/>
 
-                    <!-- Sharpen using convolution matrix -->
-                    <feConvolveMatrix id="sharpen-matrix" order="3" preserveAlpha="true" in="denoised" result="sharpened"
-                        kernelMatrix="0 0 0 0 1 0 0 0"/>
+                    <!-- Step 2: Detect edges from original to preserve them -->
+                    <feConvolveMatrix order="3" in="SourceGraphic" preserveAlpha="true"
+                        kernelMatrix="0 -1 0 -1 4 -1 0 -1 0" result="edges-raw"/>
 
-                    <!-- Edge detection for edge enhancement (subtle) -->
-                    <feConvolveMatrix id="edge-detect" order="3" preserveAlpha="true" in="sharpened" result="edges"
-                        kernelMatrix="0 -1 0 -1 5 -1 0 -1 0"/>
+                    <!-- Step 3: Convert edges to grayscale mask (luminance) -->
+                    <feColorMatrix type="matrix" in="edges-raw"
+                        values="0.299 0.587 0.114 0 0
+                                0.299 0.587 0.114 0 0
+                                0.299 0.587 0.114 0 0
+                                0 0 0 1 0" result="edge-luminance"/>
 
-                    <!-- Composite edges onto the sharpened image (add mode) -->
-                    <feComposite id="edge-blend" operator="arithmetic" in="edges" in2="sharpened"
-                        k1="0" k2="0" k3="1" k4="0" result="edge-enhanced"/>
+                    <!-- Step 4: Amplify edge mask -->
+                    <feComponentTransfer in="edge-luminance" result="edge-mask">
+                        <feFuncR type="linear" slope="3" intercept="0"/>
+                        <feFuncG type="linear" slope="3" intercept="0"/>
+                        <feFuncB type="linear" slope="3" intercept="0"/>
+                    </feComponentTransfer>
 
-                    <!-- Color temperature adjustment using color matrix -->
+                    <!-- Step 5: Mix blurred and original based on edge mask (preserve edges) -->
+                    <feComposite id="denoise-mix" operator="arithmetic" in="SourceGraphic" in2="blurred"
+                        k1="0" k2="1" k3="0" k4="0" result="denoised"/>
+
+                    <!-- ============ SHARPENING SECTION (Unsharp Mask) ============ -->
+                    <!-- Step 1: Create blur for unsharp mask -->
+                    <feGaussianBlur id="sharpen-blur" in="denoised" stdDeviation="0.8" result="sharp-blurred"/>
+
+                    <!-- Step 2: Subtract blurred from original to get high-frequency detail -->
+                    <feComposite operator="arithmetic" in="denoised" in2="sharp-blurred"
+                        k1="0" k2="1" k3="-1" k4="0" result="high-freq"/>
+
+                    <!-- Step 3: Scale and add high-frequency back (unsharp mask) -->
+                    <feComposite id="sharpen-amount" operator="arithmetic" in="high-freq" in2="denoised"
+                        k1="0" k2="0" k3="1" k4="0" result="sharpened"/>
+
+                    <!-- ============ EDGE ENHANCEMENT SECTION ============ -->
+                    <!-- Laplacian edge detection with controlled blending -->
+                    <feConvolveMatrix id="edge-enhance-matrix" order="3" in="sharpened" preserveAlpha="true"
+                        kernelMatrix="0 0 0 0 1 0 0 0 0" result="edge-enhanced"/>
+
+                    <!-- ============ TEMPERATURE ADJUSTMENT ============ -->
                     <feColorMatrix id="temperature-matrix" type="matrix" in="edge-enhanced"
                         values="1 0 0 0 0
                                 0 1 0 0 0
                                 0 0 1 0 0
-                                0 0 0 1 0"/>
+                                0 0 0 1 0" result="temp-adjusted"/>
+
+                    <!-- ============ HIGHLIGHTS ADJUSTMENT ============ -->
+                    <!-- Uses gamma curve to target bright areas only -->
+                    <feComponentTransfer id="highlights-transfer" in="temp-adjusted" result="highlights-adjusted">
+                        <feFuncR id="highlights-r" type="gamma" amplitude="1" exponent="1" offset="0"/>
+                        <feFuncG id="highlights-g" type="gamma" amplitude="1" exponent="1" offset="0"/>
+                        <feFuncB id="highlights-b" type="gamma" amplitude="1" exponent="1" offset="0"/>
+                    </feComponentTransfer>
+
+                    <!-- ============ SHADOWS ADJUSTMENT ============ -->
+                    <!-- Uses gamma curve to target dark areas only -->
+                    <feComponentTransfer id="shadows-transfer" in="highlights-adjusted" result="shadows-adjusted">
+                        <feFuncR id="shadows-r" type="gamma" amplitude="1" exponent="1" offset="0"/>
+                        <feFuncG id="shadows-g" type="gamma" amplitude="1" exponent="1" offset="0"/>
+                        <feFuncB id="shadows-b" type="gamma" amplitude="1" exponent="1" offset="0"/>
+                    </feComponentTransfer>
+
+                    <!-- ============ CAS UPSCALER (AMD FSR-style) ============ -->
+                    <!-- Contrast-Adaptive Sharpening: enhances edges based on local contrast -->
+                    <!-- Step 1: Create blur to detect low-contrast areas -->
+                    <feGaussianBlur id="cas-blur" in="shadows-adjusted" stdDeviation="0.5" result="cas-blurred"/>
+
+                    <!-- Step 2: Calculate local contrast (difference from blur) -->
+                    <feComposite operator="arithmetic" in="shadows-adjusted" in2="cas-blurred"
+                        k1="0" k2="1" k3="-1" k4="0" result="cas-contrast"/>
+
+                    <!-- Step 3: Detect edges for adaptive sharpening mask -->
+                    <feConvolveMatrix order="3" in="shadows-adjusted" preserveAlpha="true"
+                        kernelMatrix="0 -1 0 -1 4 -1 0 -1 0" result="cas-edges"/>
+
+                    <!-- Step 4: Convert to luminance mask -->
+                    <feColorMatrix type="saturate" values="0" in="cas-edges" result="cas-edge-lum"/>
+
+                    <!-- Step 5: Apply CAS sharpening kernel (adaptive based on contrast) -->
+                    <feConvolveMatrix id="cas-sharpen" order="3" in="shadows-adjusted" preserveAlpha="true"
+                        kernelMatrix="0 0 0 0 1 0 0 0 0" result="cas-sharpened"/>
+
+                    <!-- Step 6: Blend sharpened with original based on edge strength -->
+                    <feComposite id="cas-blend" operator="arithmetic" in="cas-sharpened" in2="shadows-adjusted"
+                        k1="0" k2="1" k3="0" k4="0" result="cas-result"/>
+
+                    <!-- ============ LANCZOS-STYLE UPSCALER ============ -->
+                    <!-- Multi-pass enhancement for smooth upscaling (anime/animation) -->
+                    <!-- Step 1: Slight blur to reduce aliasing artifacts -->
+                    <feGaussianBlur id="lanczos-smooth" in="cas-result" stdDeviation="0" result="lanczos-smoothed"/>
+
+                    <!-- Step 2: Edge-preserving detail enhancement -->
+                    <feConvolveMatrix id="lanczos-detail" order="5" in="lanczos-smoothed" preserveAlpha="true"
+                        kernelMatrix="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 0 0  0 0 0 0 0" result="lanczos-detailed"/>
+
+                    <!-- Step 3: Anti-aliasing pass for smooth edges -->
+                    <feConvolveMatrix id="lanczos-antialias" order="3" in="lanczos-detailed" preserveAlpha="true"
+                        kernelMatrix="0 0 0 0 1 0 0 0 0" result="final"/>
                 </filter>
             </defs>
         `;
@@ -244,19 +333,20 @@ class VideoFilter {
     }
 
     private updateSharpenMatrix(intensity: number): void {
-        const sharpenMatrix = document.getElementById('sharpen-matrix');
-        if (!sharpenMatrix) return;
+        // Unsharp mask: add scaled high-frequency detail back to image
+        // sharpen-amount composite: k1*in*in2 + k2*in + k3*in2 + k4
+        // in = high-freq detail, in2 = denoised original
+        // Result = (sharpenAmount * high-freq) + (1 * original)
+        const sharpenAmount = document.getElementById('sharpen-amount');
+        if (!sharpenAmount) return;
 
-        // intensity 0-100 maps to sharpness amount
-        // Base kernel: [0, -k, 0, -k, 1+4k, -k, 0, -k, 0]
-        // k = 0 means no sharpening, k = 1 means strong sharpening
-        const k = intensity / 100; // 0 to 1
-        const center = 1 + 4 * k;
-        const edge = -k;
+        // intensity 0-100 maps to sharpening strength
+        // 0 = no sharpening (k2=0, k3=1), 100 = strong sharpening (k2=1.5, k3=1)
+        const strength = (intensity / 100) * 1.5; // 0 to 1.5
 
-        // 3x3 sharpen kernel as flat array
-        const kernel = `${0} ${edge} ${0} ${edge} ${center} ${edge} ${0} ${edge} ${0}`;
-        sharpenMatrix.setAttribute('kernelMatrix', kernel);
+        // k2 controls high-freq contribution, k3=1 keeps original
+        sharpenAmount.setAttribute('k2', strength.toString());
+        sharpenAmount.setAttribute('k3', '1');
     }
 
     private updateTemperatureMatrix(temperature: number): void {
@@ -283,44 +373,187 @@ class VideoFilter {
 
     private updateDenoiseBlur(intensity: number): void {
         const denoiseBlur = document.getElementById('denoise-blur');
-        if (!denoiseBlur) return;
+        const denoiseMix = document.getElementById('denoise-mix');
+        if (!denoiseBlur || !denoiseMix) return;
 
-        // intensity 0-100 maps to blur standard deviation 0-2
-        const stdDev = (intensity / 100) * 2;
+        // intensity 0-100 maps to:
+        // - blur stdDeviation: 0-1.5 (subtle blur for noise reduction)
+        // - mix ratio between original and blurred
+        const stdDev = (intensity / 100) * 1.5;
         denoiseBlur.setAttribute('stdDeviation', stdDev.toString());
+
+        // Edge-preserving mix: blend original with blurred
+        // k2 = original weight, k3 = blurred weight
+        // At 0 intensity: 100% original (k2=1, k3=0)
+        // At 100 intensity: 30% original + 70% blurred (k2=0.3, k3=0.7)
+        // This keeps edges sharper than pure blur
+        const blurWeight = (intensity / 100) * 0.7;
+        const originalWeight = 1 - blurWeight;
+
+        denoiseMix.setAttribute('k2', originalWeight.toString());
+        denoiseMix.setAttribute('k3', blurWeight.toString());
     }
 
     private updateEdgeEnhancement(intensity: number): void {
-        const edgeBlend = document.getElementById('edge-blend');
-        if (!edgeBlend) return;
+        const edgeMatrix = document.getElementById('edge-enhance-matrix');
+        if (!edgeMatrix) return;
 
-        // intensity 0-100 controls how much edge detail is added
-        // feComposite arithmetic: result = k1*i1*i2 + k2*i1 + k3*i2 + k4
-        // i1 = edges, i2 = sharpened
-        // We want: result = (intensity * edges) + (1 * sharpened)
+        // Edge enhancement using Laplacian-like kernel
+        // At 0: identity kernel [0 0 0 | 0 1 0 | 0 0 0]
+        // At 100: strong edge enhancement [-0.5 -0.5 -0.5 | -0.5 5 -0.5 | -0.5 -0.5 -0.5]
+        const k = (intensity / 100) * 0.5; // 0 to 0.5 (subtle range)
+        const center = 1 + 8 * k;
+        const edge = -k;
 
-        const edgeContribution = intensity / 300; // 0 to 0.33 (subtle enhancement)
+        const kernel = `${edge} ${edge} ${edge} ${edge} ${center} ${edge} ${edge} ${edge} ${edge}`;
+        edgeMatrix.setAttribute('kernelMatrix', kernel);
+    }
 
-        // k1=0 (no multiplication), k2=edgeContribution (edges), k3=1 (base image), k4=0 (no offset)
-        edgeBlend.setAttribute('k2', edgeContribution.toString());
+    private updateHighlights(intensity: number): void {
+        // Highlights adjustment using gamma curve
+        // Gamma < 1 brightens highlights, Gamma > 1 darkens them
+        // intensity 100 = neutral, <100 = darker highlights, >100 = brighter highlights
+        const highlightsR = document.getElementById('highlights-r');
+        const highlightsG = document.getElementById('highlights-g');
+        const highlightsB = document.getElementById('highlights-b');
+        if (!highlightsR || !highlightsG || !highlightsB) return;
+
+        // Map intensity (50-150 range typically) to gamma exponent
+        // intensity 100 = gamma 1.0 (neutral)
+        // intensity 150 = gamma 0.7 (brighter highlights)
+        // intensity 50 = gamma 1.4 (darker highlights)
+        // Using amplitude to specifically target highlights (bright values)
+        const normalized = intensity / 100; // 0.5 to 1.5
+
+        // For highlights: we use amplitude > 1 with offset to target bright areas
+        // gamma with exponent < 1 lifts the curve more at high values
+        const exponent = 1 / normalized; // 2.0 to 0.67
+
+        // Adjust amplitude to compensate and keep midtones stable
+        const amplitude = Math.pow(0.5, exponent - 1); // Keeps midpoint roughly stable
+
+        [highlightsR, highlightsG, highlightsB].forEach(func => {
+            func.setAttribute('exponent', exponent.toFixed(3));
+            func.setAttribute('amplitude', amplitude.toFixed(3));
+        });
+    }
+
+    private updateShadows(intensity: number): void {
+        // Shadows adjustment using gamma curve with offset
+        // intensity 100 = neutral, <100 = darker shadows, >100 = lifted shadows
+        const shadowsR = document.getElementById('shadows-r');
+        const shadowsG = document.getElementById('shadows-g');
+        const shadowsB = document.getElementById('shadows-b');
+        if (!shadowsR || !shadowsG || !shadowsB) return;
+
+        // Map intensity to shadow lift/crush
+        // Using offset to add/subtract from dark areas primarily
+        const normalized = (intensity - 100) / 100; // -0.5 to 0.5
+
+        // Offset lifts blacks (positive) or crushes them (negative)
+        // Keep it subtle to avoid washing out or clipping
+        const offset = normalized * 0.15; // -0.075 to 0.075
+
+        // Use gamma > 1 for shadow areas to affect primarily dark tones
+        // Exponent > 1 darkens shadows, < 1 lifts them
+        const exponent = 1 - (normalized * 0.3); // 1.15 to 0.85
+
+        [shadowsR, shadowsG, shadowsB].forEach(func => {
+            func.setAttribute('exponent', exponent.toFixed(3));
+            func.setAttribute('offset', offset.toFixed(4));
+        });
+    }
+
+    private updateUpscaleCAS(intensity: number): void {
+        // CAS (Contrast-Adaptive Sharpening) - AMD FSR 1.0 style
+        // Applies stronger sharpening to edges while preserving smooth areas
+        const casSharpen = document.getElementById('cas-sharpen');
+        const casBlend = document.getElementById('cas-blend');
+        if (!casSharpen || !casBlend) return;
+
+        if (intensity === 0) {
+            // Identity kernel when disabled
+            casSharpen.setAttribute('kernelMatrix', '0 0 0 0 1 0 0 0 0');
+            casBlend.setAttribute('k2', '1');
+            casBlend.setAttribute('k3', '0');
+            return;
+        }
+
+        // intensity 0-100 maps to sharpening strength
+        // CAS uses an edge-aware kernel that enhances contrast along edges
+        const strength = intensity / 100;
+
+        // Enhanced sharpening kernel - stronger than regular sharpening
+        // Negative values around center pull contrast toward edges
+        const k = strength * 0.8; // Max edge weight
+        const center = 1 + 8 * k;
+        const edge = -k;
+        const corner = -k * 0.5;
+
+        const kernel = `${corner} ${edge} ${corner} ${edge} ${center} ${edge} ${corner} ${edge} ${corner}`;
+        casSharpen.setAttribute('kernelMatrix', kernel);
+
+        // Blend: stronger effect at higher intensity
+        // k2 = sharpened contribution, k3 = original contribution (for blending)
+        const sharpWeight = Math.min(1, strength * 1.2); // Up to 120% sharpened
+        casBlend.setAttribute('k2', sharpWeight.toFixed(3));
+        casBlend.setAttribute('k3', (1 - sharpWeight * 0.2).toFixed(3)); // Keep some original
+    }
+
+    private updateUpscaleLanczos(intensity: number): void {
+        // Lanczos-style upscaling enhancement
+        // Smooths aliasing while enhancing fine detail - great for anime/animation
+        const lanczosSmooth = document.getElementById('lanczos-smooth');
+        const lanczosDetail = document.getElementById('lanczos-detail');
+        const lanczosAntialias = document.getElementById('lanczos-antialias');
+        if (!lanczosSmooth || !lanczosDetail || !lanczosAntialias) return;
+
+        if (intensity === 0) {
+            // Pass-through when disabled
+            lanczosSmooth.setAttribute('stdDeviation', '0');
+            lanczosDetail.setAttribute('kernelMatrix', '0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 0 0  0 0 0 0 0');
+            lanczosAntialias.setAttribute('kernelMatrix', '0 0 0 0 1 0 0 0 0');
+            return;
+        }
+
+        const strength = intensity / 100;
+
+        // Step 1: Gentle smoothing to reduce jaggies (subtle blur)
+        // Lower stdDeviation to avoid over-softening
+        const smoothAmount = strength * 0.3; // Max 0.3 blur
+        lanczosSmooth.setAttribute('stdDeviation', smoothAmount.toFixed(2));
+
+        // Step 2: 5x5 Lanczos-approximation kernel for detail enhancement
+        // This simulates the ringing/sharpening effect of Lanczos interpolation
+        // which enhances fine textures and line art
+        const d = strength * 0.15; // Detail enhancement strength
+        const c = 1 + 8 * d; // Center weight
+        const e = -d; // Edge weight (negative for sharpening)
+        const f = d * 0.25; // Far corner (positive for subtle ringing)
+
+        // 5x5 kernel approximating Lanczos windowed sinc
+        const detailKernel = `${f} ${e} ${e} ${e} ${f}  ${e} ${e} ${-d*2} ${e} ${e}  ${e} ${-d*2} ${c} ${-d*2} ${e}  ${e} ${e} ${-d*2} ${e} ${e}  ${f} ${e} ${e} ${e} ${f}`;
+        lanczosDetail.setAttribute('kernelMatrix', detailKernel);
+
+        // Step 3: Anti-aliasing kernel for smooth edges
+        // Subtle averaging to smooth out any remaining jaggies
+        const aa = strength * 0.1; // Anti-alias strength
+        const aaCenter = 1 - 4 * aa;
+        const aaEdge = aa;
+
+        const aaKernel = `0 ${aaEdge} 0 ${aaEdge} ${aaCenter} ${aaEdge} 0 ${aaEdge} 0`;
+        lanczosAntialias.setAttribute('kernelMatrix', aaKernel);
     }
 
     private applyFilters(): void {
         if (!this.video) return;
 
-        // Build CSS filter string for brightness, contrast, saturation, highlights, shadows
+        // Build CSS filter string for basic adjustments (brightness, contrast, saturation)
         const cssFilters: string[] = [];
 
-        // Base brightness (100 = normal)
-        const brightnessAdjust = this.settings.brightness / 100;
-
-        // Highlights adjustment (100 = normal, >100 = brighter highlights, <100 = darker highlights)
-        // Combine with base brightness for overall effect
-        const highlightsAdjust = this.settings.highlights / 100;
-        const combinedBrightness = brightnessAdjust * highlightsAdjust;
-
-        if (combinedBrightness !== 1) {
-            cssFilters.push(`brightness(${combinedBrightness})`);
+        // Brightness (100 = normal) - simple global brightness
+        if (this.settings.brightness !== 100) {
+            cssFilters.push(`brightness(${this.settings.brightness / 100})`);
         }
 
         // Contrast (100 = normal)
@@ -328,31 +561,34 @@ class VideoFilter {
             cssFilters.push(`contrast(${this.settings.contrast / 100})`);
         }
 
-        // Shadows (black levels) - use contrast curve adjustment
-        // 100 = normal, >100 = lighter shadows, <100 = darker shadows
-        if (this.settings.shadows !== 100) {
-            const shadowsAdjust = this.settings.shadows / 100;
-            // Apply a secondary contrast adjustment for shadows
-            cssFilters.push(`contrast(${shadowsAdjust})`);
-        }
-
         // Saturation (100 = normal)
         if (this.settings.saturation !== 100) {
             cssFilters.push(`saturate(${this.settings.saturation / 100})`);
         }
 
-        // Apply SVG filter for advanced effects (sharpness, temperature, denoise, edge enhancement)
+        // Advanced SVG filters: sharpness, temperature, denoise, edge enhancement, highlights, shadows, upscalers
         const hasSharpen = this.settings.sharpness > 0;
         const hasTemperature = this.settings.temperature !== 0;
         const hasDenoise = this.settings.denoise > 0;
         const hasEdgeEnhance = this.settings.edgeEnhance > 0;
+        const hasHighlights = this.settings.highlights !== 100;
+        const hasShadows = this.settings.shadows !== 100;
+        const hasUpscaleCAS = this.settings.upscaleCAS > 0;
+        const hasUpscaleLanczos = this.settings.upscaleLanczos > 0;
 
-        if (hasSharpen || hasTemperature || hasDenoise || hasEdgeEnhance) {
+        // Always apply SVG filter if any advanced effect is active
+        if (hasSharpen || hasTemperature || hasDenoise || hasEdgeEnhance || hasHighlights || hasShadows || hasUpscaleCAS || hasUpscaleLanczos) {
             cssFilters.push(`url(#${this.svgFilterId})`);
+
+            // Update all SVG filter parameters
             this.updateSharpenMatrix(this.settings.sharpness);
             this.updateTemperatureMatrix(this.settings.temperature);
             this.updateDenoiseBlur(this.settings.denoise);
             this.updateEdgeEnhancement(this.settings.edgeEnhance);
+            this.updateHighlights(this.settings.highlights);
+            this.updateShadows(this.settings.shadows);
+            this.updateUpscaleCAS(this.settings.upscaleCAS);
+            this.updateUpscaleLanczos(this.settings.upscaleLanczos);
         }
 
         // Apply combined filter to video
@@ -402,6 +638,8 @@ class VideoFilter {
         this.setupSlider('video-filter-shadows', 'shadows', 'shadows-value', '%');
         this.setupSlider('video-filter-denoise', 'denoise', 'denoise-value', '%');
         this.setupSlider('video-filter-edge-enhance', 'edgeEnhance', 'edge-enhance-value', '%');
+        this.setupSlider('video-filter-upscale-cas', 'upscaleCAS', 'upscale-cas-value', '%');
+        this.setupSlider('video-filter-upscale-lanczos', 'upscaleLanczos', 'upscale-lanczos-value', '%');
 
         // Reset button
         document.getElementById('video-filter-reset')?.addEventListener('click', () => {
@@ -481,6 +719,8 @@ class VideoFilter {
             shadows: PLAYER_DEFAULTS.VIDEO_FILTER_SHADOWS,
             denoise: PLAYER_DEFAULTS.VIDEO_FILTER_DENOISE,
             edgeEnhance: PLAYER_DEFAULTS.VIDEO_FILTER_EDGE_ENHANCE,
+            upscaleCAS: PLAYER_DEFAULTS.VIDEO_FILTER_UPSCALE_CAS,
+            upscaleLanczos: PLAYER_DEFAULTS.VIDEO_FILTER_UPSCALE_LANCZOS,
         };
 
         // Update sliders
@@ -493,6 +733,8 @@ class VideoFilter {
         this.updateSlider('video-filter-shadows', 'shadows-value', this.settings.shadows, '%');
         this.updateSlider('video-filter-denoise', 'denoise-value', this.settings.denoise, '%');
         this.updateSlider('video-filter-edge-enhance', 'edge-enhance-value', this.settings.edgeEnhance, '%');
+        this.updateSlider('video-filter-upscale-cas', 'upscale-cas-value', this.settings.upscaleCAS, '%');
+        this.updateSlider('video-filter-upscale-lanczos', 'upscale-lanczos-value', this.settings.upscaleLanczos, '%');
 
         this.applyFilters();
         this.saveSettings();

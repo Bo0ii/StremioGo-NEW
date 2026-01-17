@@ -112,6 +112,33 @@
             <input type="range" id="video-filter-edge-enhance" class="video-filter-slider"
                    min="0" max="100" value="{{ edgeEnhance }}" step="1">
         </div>
+
+        <!-- Upscaling Section Divider -->
+        <div class="video-filter-section-divider">
+            <span>Upscaling</span>
+        </div>
+
+        <!-- CAS Upscaler (AMD FSR-style) -->
+        <div class="video-filter-control">
+            <div class="video-filter-label">
+                <span>CAS (FSR-style)</span>
+                <span id="upscale-cas-value" class="video-filter-value">{{ upscaleCAS }}%</span>
+            </div>
+            <input type="range" id="video-filter-upscale-cas" class="video-filter-slider"
+                   min="0" max="100" value="{{ upscaleCAS }}" step="1">
+            <div class="video-filter-hint">Contrast-adaptive sharpening for live-action</div>
+        </div>
+
+        <!-- Lanczos-style Upscaler -->
+        <div class="video-filter-control">
+            <div class="video-filter-label">
+                <span>Lanczos (Anime)</span>
+                <span id="upscale-lanczos-value" class="video-filter-value">{{ upscaleLanczos }}%</span>
+            </div>
+            <input type="range" id="video-filter-upscale-lanczos" class="video-filter-slider"
+                   min="0" max="100" value="{{ upscaleLanczos }}" step="1">
+            <div class="video-filter-hint">Smooth edges for animation/anime</div>
+        </div>
     </div>
 </div>
 
@@ -335,6 +362,35 @@
 
     .video-filter-temp-labels span:last-child {
         color: rgba(255, 150, 100, 0.6);
+    }
+
+    /* Section Divider */
+    .video-filter-section-divider {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 20px 0 16px 0;
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .video-filter-section-divider::before,
+    .video-filter-section-divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    }
+
+    /* Hint text below sliders */
+    .video-filter-hint {
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.4);
+        margin-top: 4px;
+        font-style: italic;
     }
 
     /* WebGL Canvas Overlay - positioned over video */
