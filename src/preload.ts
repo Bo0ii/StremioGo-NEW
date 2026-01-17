@@ -3104,32 +3104,29 @@ let partyVideoElement: HTMLVideoElement | null = null;
 let isRemoteAction = false; // Flag to prevent feedback loops
 
 // Video event handlers for party sync
+// All party members can control playback (bidirectional sync)
 function onPartyVideoPlay(): void {
-    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
-    // Only hosts can broadcast play/pause (server only forwards commands from hosts)
-    logger.info('[Party] Host played video - broadcasting');
-    partyService.broadcastStateChange(partyVideoElement!, true);
+    if (isRemoteAction || !partyService.connected) return;
+    logger.info('[Party] Video played - broadcasting');
+    partyService.broadcastMemberStateChange(partyVideoElement!, true);
 }
 
 function onPartyVideoPause(): void {
-    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
-    // Only hosts can broadcast play/pause (server only forwards commands from hosts)
-    logger.info('[Party] Host paused video - broadcasting');
-    partyService.broadcastStateChange(partyVideoElement!, true);
+    if (isRemoteAction || !partyService.connected) return;
+    logger.info('[Party] Video paused - broadcasting');
+    partyService.broadcastMemberStateChange(partyVideoElement!, true);
 }
 
 function onPartyVideoSeeked(): void {
-    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
-    // Only hosts can broadcast seek (server only forwards commands from hosts)
-    logger.info('[Party] Host seeked video - broadcasting');
-    partyService.broadcastStateChange(partyVideoElement!, true);
+    if (isRemoteAction || !partyService.connected) return;
+    logger.info('[Party] Video seeked - broadcasting');
+    partyService.broadcastMemberStateChange(partyVideoElement!, true);
 }
 
 function onPartyVideoRateChange(): void {
-    if (isRemoteAction || !partyService.connected || !partyService.isHost) return;
-    // Only hosts can broadcast playback rate changes
-    logger.info('[Party] Host changed playback rate - broadcasting');
-    partyService.broadcastStateChange(partyVideoElement!, false);
+    if (isRemoteAction || !partyService.connected) return;
+    logger.info('[Party] Playback rate changed - broadcasting');
+    partyService.broadcastMemberStateChange(partyVideoElement!, false);
 }
 
 /**
@@ -3138,8 +3135,12 @@ function onPartyVideoRateChange(): void {
 function initPartyVideoSync(): void {
     if (!partyService.connected || !partyService.room) {
         logger.info('[Party] Not in party, skipping video sync init');
+        removeFloatingPartyChatIcon();
         return;
     }
+
+    // Show floating chat icon for all party members
+    createFloatingPartyChatIcon();
 
     // Wait for video element
     const checkForVideo = setInterval(() => {
@@ -3210,6 +3211,9 @@ function cleanupPartyVideoSync(): void {
     // Reset stream sync state to allow syncing to new videos
     // Don't clear lastSyncedStreamUrl here - keep it for comparison
     logger.info('[Party] Video sync cleanup complete');
+
+    // Remove floating chat icon when leaving player
+    removeFloatingPartyChatIcon();
 }
 
 /**
@@ -3258,7 +3262,8 @@ function setupPartyListeners(): void {
                 const timeDiff = Math.abs(video.currentTime - targetTime);
 
                 // Sync time if difference is significant or forced
-                const maxDelay = 0.5 * (stateData.playbackSpeed || 1);
+                // Use 2.5 second tolerance to reduce buffering on different connection speeds
+                const maxDelay = 2.5 * (stateData.playbackSpeed || 1);
                 if (timeDiff > maxDelay || stateData.force) {
                     logger.info('[Party] Syncing time:', targetTime, 'diff:', timeDiff);
                     video.currentTime = targetTime;
@@ -3300,11 +3305,17 @@ function setupPartyListeners(): void {
     partyService.on('room', () => {
         updateTitleBarPartyState();
         updateNavPartyButtonState();
+        updateFloatingChatIconCount();
+        // Also try to show floating icon if we're in player (for late room updates)
+        if (location.hash.includes('#/player')) {
+            createFloatingPartyChatIcon();
+        }
     });
 
     partyService.on('disconnected', () => {
         updateTitleBarPartyState();
         updateNavPartyButtonState();
+        removeFloatingPartyChatIcon();
     });
 
     // Expose partyService to window for plugins
@@ -3388,7 +3399,14 @@ function showPartyChatOverlay(senderName: string, text: string): void {
     // Remove after 5 seconds
     setTimeout(() => {
         msgEl.style.animation = 'partyChatFadeOut 0.3s ease-out forwards';
-        setTimeout(() => msgEl.remove(), 300);
+        setTimeout(() => {
+            msgEl.remove();
+            // Clean up container if empty to avoid ghost element
+            const containerEl = document.getElementById('party-chat-overlay-container');
+            if (containerEl && containerEl.children.length === 0) {
+                containerEl.remove();
+            }
+        }, 300);
     }, 5000);
 
     // Keep only last 3 messages
@@ -3404,6 +3422,104 @@ function escapeHtml(text: string): string {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+/**
+ * Create floating party chat icon for player view
+ * Shows for ALL party members, not just host
+ */
+function createFloatingPartyChatIcon(): void {
+    // Only show in player and when in party
+    if (!location.hash.includes('#/player') || !partyService.connected || !partyService.room) {
+        removeFloatingPartyChatIcon();
+        return;
+    }
+
+    // Already exists
+    if (document.getElementById('party-floating-chat-icon')) return;
+
+    const icon = document.createElement('div');
+    icon.id = 'party-floating-chat-icon';
+    icon.title = 'Party Chat (Press C)';
+    icon.innerHTML = `
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+            <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+        </svg>
+        <span class="party-chat-member-count">${partyService.room.members.length}</span>
+    `;
+    icon.style.cssText = `
+        position: fixed;
+        bottom: 100px;
+        right: 20px;
+        width: 48px;
+        height: 48px;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(10px);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 999998;
+        color: #10b981;
+        transition: all 0.2s ease;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    `;
+
+    // Add styles for member count badge and hover
+    if (!document.getElementById('party-floating-icon-styles')) {
+        const style = document.createElement('style');
+        style.id = 'party-floating-icon-styles';
+        style.textContent = `
+            #party-floating-chat-icon:hover {
+                background: rgba(16, 185, 129, 0.3);
+                transform: scale(1.1);
+            }
+            #party-floating-chat-icon .party-chat-member-count {
+                position: absolute;
+                top: -4px;
+                right: -4px;
+                background: #10b981;
+                color: white;
+                font-size: 10px;
+                font-weight: bold;
+                min-width: 18px;
+                height: 18px;
+                border-radius: 9px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0 4px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    icon.addEventListener('click', toggleQuickChat);
+    document.body.appendChild(icon);
+    logger.info('[Party] Created floating chat icon');
+}
+
+/**
+ * Remove floating party chat icon
+ */
+function removeFloatingPartyChatIcon(): void {
+    const icon = document.getElementById('party-floating-chat-icon');
+    if (icon) {
+        icon.remove();
+        logger.info('[Party] Removed floating chat icon');
+    }
+}
+
+/**
+ * Update floating chat icon member count
+ */
+function updateFloatingChatIconCount(): void {
+    const countEl = document.querySelector('#party-floating-chat-icon .party-chat-member-count');
+    if (countEl && partyService.room) {
+        countEl.textContent = partyService.room.members.length.toString();
+    }
 }
 
 /**
