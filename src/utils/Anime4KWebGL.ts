@@ -9,6 +9,9 @@ import logger from './logger';
 // Available Anime4K modes matching mpv presets
 export type Anime4KMode =
     | 'off'
+    | 'modeALite'  // Mode A- (Lite) - Lightweight line restore for laptops
+    | 'modeBLite'  // Mode B- (Lite) - Lightweight soft restore for laptops
+    | 'modeCLite'  // Mode C- (Lite) - Lightweight upscale denoise for laptops
     | 'modeA'      // Mode A (Fast) - Line restore
     | 'modeB'      // Mode B (Fast) - Soft restore
     | 'modeC'      // Mode C (Fast) - Upscale denoise
@@ -29,24 +32,34 @@ function doublePass(preset: any): any {
 // Map modes to Anime4K.js presets
 const MODE_PRESETS: Record<Anime4KMode, unknown> = {
     'off': Anime4KJS.ANIME4KJS_EMPTY,
+    // Lite modes for laptops (lower-end presets)
+    'modeALite': Anime4KJS.ANIME4K_LOWEREND_MODE_A,
+    'modeBLite': Anime4KJS.ANIME4K_LOWEREND_MODE_B,
+    'modeCLite': Anime4KJS.ANIME4K_LOWEREND_MODE_C,
+    // Standard modes (higher-end fast)
     'modeA': Anime4KJS.ANIME4K_HIGHEREND_MODE_A_FAST,
     'modeB': Anime4KJS.ANIME4K_HIGHEREND_MODE_B_FAST,
     'modeC': Anime4KJS.ANIME4K_HIGHEREND_MODE_C_FAST,
+    // HQ modes (higher-end full)
     'modeAHQ': Anime4KJS.ANIME4K_HIGHEREND_MODE_A,
     'modeBHQ': Anime4KJS.ANIME4K_HIGHEREND_MODE_B,
     'modeCHQ': Anime4KJS.ANIME4K_HIGHEREND_MODE_C,
-    'bo0ii': doublePass(Anime4KJS.ANIME4K_HIGHEREND_MODE_A), // Double pass A+ for maximum quality
+    // Bo0ii exclusive (double pass A+ for maximum quality)
+    'bo0ii': doublePass(Anime4KJS.ANIME4K_HIGHEREND_MODE_A),
 };
 
 // Mode display names for UI
 export const MODE_NAMES: Record<Anime4KMode, string> = {
     'off': 'Off',
-    'modeA': 'A (Fast)',
-    'modeB': 'B (Fast)',
-    'modeC': 'C (Fast)',
-    'modeAHQ': 'A (HQ)',
-    'modeBHQ': 'B (HQ)',
-    'modeCHQ': 'C (HQ)',
+    'modeALite': 'A-',
+    'modeBLite': 'B-',
+    'modeCLite': 'C-',
+    'modeA': 'A',
+    'modeB': 'B',
+    'modeC': 'C',
+    'modeAHQ': 'A+',
+    'modeBHQ': 'B+',
+    'modeCHQ': 'C+',
     'bo0ii': 'Bo0ii',
 };
 

@@ -152,16 +152,24 @@
             <div class="video-filter-label">
                 <span>Mode</span>
             </div>
-            <div class="anime4k-mode-selector" data-current-mode="{{ anime4kMode }}">
+            <!-- Lite modes for laptops -->
+            <div class="anime4k-mode-selector anime4k-mode-selector-lite" data-current-mode="{{ anime4kMode }}">
                 <button class="anime4k-mode-btn" data-mode="off" title="Disabled" {{ anime4kSupported }}>OFF</button>
+                <button class="anime4k-mode-btn anime4k-lite-btn" data-mode="modeALite" title="Mode A- (Lite) - For Laptops" {{ anime4kSupported }}>A-</button>
+                <button class="anime4k-mode-btn anime4k-lite-btn" data-mode="modeBLite" title="Mode B- (Lite) - For Laptops" {{ anime4kSupported }}>B-</button>
+                <button class="anime4k-mode-btn anime4k-lite-btn" data-mode="modeCLite" title="Mode C- (Lite) - For Laptops" {{ anime4kSupported }}>C-</button>
+            </div>
+            <!-- Standard modes -->
+            <div class="anime4k-mode-selector" data-current-mode="{{ anime4kMode }}">
                 <button class="anime4k-mode-btn" data-mode="modeA" title="Mode A - Line Restore" {{ anime4kSupported }}>A</button>
                 <button class="anime4k-mode-btn" data-mode="modeB" title="Mode B - Soft Restore" {{ anime4kSupported }}>B</button>
                 <button class="anime4k-mode-btn" data-mode="modeC" title="Mode C - Upscale Denoise" {{ anime4kSupported }}>C</button>
             </div>
+            <!-- HQ modes -->
             <div class="anime4k-mode-selector anime4k-mode-selector-hq" data-current-mode="{{ anime4kMode }}">
-                <button class="anime4k-mode-btn" data-mode="modeAHQ" title="Mode A HQ - High Quality Line Restore" {{ anime4kSupported }}>A+</button>
-                <button class="anime4k-mode-btn" data-mode="modeBHQ" title="Mode B HQ - High Quality Soft Restore" {{ anime4kSupported }}>B+</button>
-                <button class="anime4k-mode-btn" data-mode="modeCHQ" title="Mode C HQ - High Quality Upscale Denoise" {{ anime4kSupported }}>C+</button>
+                <button class="anime4k-mode-btn" data-mode="modeAHQ" title="Mode A+ (HQ) - High Quality Line Restore" {{ anime4kSupported }}>A+</button>
+                <button class="anime4k-mode-btn" data-mode="modeBHQ" title="Mode B+ (HQ) - High Quality Soft Restore" {{ anime4kSupported }}>B+</button>
+                <button class="anime4k-mode-btn" data-mode="modeCHQ" title="Mode C+ (HQ) - High Quality Upscale Denoise" {{ anime4kSupported }}>C+</button>
             </div>
             <div class="anime4k-mode-selector anime4k-mode-selector-exclusive">
                 <button class="anime4k-mode-btn anime4k-bo0ii-btn" data-mode="bo0ii" title="Bo0ii Exclusive - Double Pass A+ (Very GPU Intensive)" {{ anime4kSupported }}>Bo0ii</button>
@@ -559,6 +567,29 @@
 
     .anime4k-control .video-filter-hint {
         margin-top: 8px;
+    }
+
+    /* Lite modes for laptops */
+    .anime4k-mode-selector-lite {
+        margin-bottom: 4px;
+    }
+
+    .anime4k-lite-btn {
+        background: rgba(76, 175, 80, 0.2);
+        border-color: rgba(76, 175, 80, 0.4);
+        color: rgba(76, 175, 80, 0.9);
+    }
+
+    .anime4k-lite-btn:hover:not(:disabled) {
+        background: rgba(76, 175, 80, 0.3);
+        color: #4CAF50;
+    }
+
+    .anime4k-lite-btn.active {
+        background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%);
+        border-color: #4CAF50;
+        color: white;
+        box-shadow: 0 2px 8px rgba(76, 175, 80, 0.4);
     }
 
     /* Bo0ii Exclusive Button */
