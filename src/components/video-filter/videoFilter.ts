@@ -2,6 +2,7 @@ import TemplateCache from "../../utils/templateCache";
 import Helpers from "../../utils/Helpers";
 import logger from "../../utils/logger";
 import { STORAGE_KEYS, PLAYER_DEFAULTS } from "../../constants";
+import Anime4KRenderer, { Anime4KMode } from "../../utils/Anime4KRenderer";
 
 interface FilterSettings {
     sharpness: number;
@@ -15,7 +16,12 @@ interface FilterSettings {
     edgeEnhance: number;
     upscaleCAS: number;
     upscaleLanczos: number;
+    anime4kMode: Anime4KMode;
+    anime4kStrength: number;
 }
+
+// Numeric-only settings for slider handling
+type NumericFilterSettings = Omit<FilterSettings, 'anime4kMode'>;
 
 // Default accent color (purple) - used when user hasn't set a custom color
 const DEFAULT_ACCENT_COLOR = '#7b5bf5';
@@ -27,6 +33,7 @@ class VideoFilter {
     private isInitialized: boolean = false;
     private settings: FilterSettings;
     private svgFilterId: string = 'video-sharpen-filter';
+    private anime4kRenderer: Anime4KRenderer | null = null;
 
     constructor() {
         this.settings = this.loadSettings();
@@ -84,6 +91,8 @@ class VideoFilter {
             edgeEnhance: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_EDGE_ENHANCE) || PLAYER_DEFAULTS.VIDEO_FILTER_EDGE_ENHANCE.toString()),
             upscaleCAS: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_UPSCALE_CAS) || PLAYER_DEFAULTS.VIDEO_FILTER_UPSCALE_CAS.toString()),
             upscaleLanczos: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_UPSCALE_LANCZOS) || PLAYER_DEFAULTS.VIDEO_FILTER_UPSCALE_LANCZOS.toString()),
+            anime4kMode: (localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_ANIME4K_MODE) || PLAYER_DEFAULTS.VIDEO_FILTER_ANIME4K_MODE) as Anime4KMode,
+            anime4kStrength: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_ANIME4K_STRENGTH) || PLAYER_DEFAULTS.VIDEO_FILTER_ANIME4K_STRENGTH.toString()),
         };
     }
 
@@ -99,6 +108,8 @@ class VideoFilter {
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_EDGE_ENHANCE, this.settings.edgeEnhance.toString());
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_UPSCALE_CAS, this.settings.upscaleCAS.toString());
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_UPSCALE_LANCZOS, this.settings.upscaleLanczos.toString());
+        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_ANIME4K_MODE, this.settings.anime4kMode);
+        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_ANIME4K_STRENGTH, this.settings.anime4kStrength.toString());
     }
 
     public init(): void {
@@ -115,6 +126,7 @@ class VideoFilter {
             this.settings = this.loadSettings();
             this.injectUI();
             this.injectSVGFilter();
+            this.initAnime4K();
             this.applyFilters();
             this.setupEventListeners();
             this.isInitialized = true;
@@ -122,6 +134,26 @@ class VideoFilter {
         }).catch(err => {
             logger.error(`[VideoFilter] Failed to find video element: ${err}`);
         });
+    }
+
+    private initAnime4K(): void {
+        if (!this.video) return;
+
+        // Create Anime4K renderer
+        this.anime4kRenderer = new Anime4KRenderer();
+        const success = this.anime4kRenderer.init(this.video);
+
+        if (success) {
+            // Apply saved settings
+            this.anime4kRenderer.setStrength(this.settings.anime4kStrength / 100);
+            if (this.settings.anime4kMode !== 'off') {
+                this.anime4kRenderer.setMode(this.settings.anime4kMode);
+            }
+            logger.info('[VideoFilter] Anime4K renderer initialized');
+        } else {
+            logger.warn('[VideoFilter] Failed to initialize Anime4K renderer');
+            this.anime4kRenderer = null;
+        }
     }
 
     private injectUI(): void {
@@ -149,6 +181,8 @@ class VideoFilter {
         template = template.replace(/\{\{\s*edgeEnhance\s*\}\}/g, this.settings.edgeEnhance.toString());
         template = template.replace(/\{\{\s*upscaleCAS\s*\}\}/g, this.settings.upscaleCAS.toString());
         template = template.replace(/\{\{\s*upscaleLanczos\s*\}\}/g, this.settings.upscaleLanczos.toString());
+        template = template.replace(/\{\{\s*anime4kMode\s*\}\}/g, this.settings.anime4kMode);
+        template = template.replace(/\{\{\s*anime4kStrength\s*\}\}/g, this.settings.anime4kStrength.toString());
 
         // Replace accent color placeholders
         template = template.replace(/\{\{\s*accentColor\s*\}\}/g, accentColor);
@@ -641,6 +675,12 @@ class VideoFilter {
         this.setupSlider('video-filter-upscale-cas', 'upscaleCAS', 'upscale-cas-value', '%');
         this.setupSlider('video-filter-upscale-lanczos', 'upscaleLanczos', 'upscale-lanczos-value', '%');
 
+        // Anime4K mode selector
+        this.setupAnime4KModeSelector();
+
+        // Anime4K strength slider
+        this.setupSlider('video-filter-anime4k-strength', 'anime4kStrength', 'anime4k-strength-value', '%');
+
         // Reset button
         document.getElementById('video-filter-reset')?.addEventListener('click', () => {
             this.resetFilters();
@@ -667,7 +707,7 @@ class VideoFilter {
         logger.info("[VideoFilter] Event listeners setup complete");
     }
 
-    private setupSlider(sliderId: string, settingKey: keyof FilterSettings, valueId: string, suffix: string): void {
+    private setupSlider(sliderId: string, settingKey: keyof NumericFilterSettings, valueId: string, suffix: string): void {
         const slider = document.getElementById(sliderId) as HTMLInputElement;
         const valueDisplay = document.getElementById(valueId);
 
@@ -675,7 +715,7 @@ class VideoFilter {
 
         slider.addEventListener('input', () => {
             const value = parseInt(slider.value);
-            this.settings[settingKey] = value;
+            (this.settings as NumericFilterSettings)[settingKey] = value;
             valueDisplay.textContent = `${value}${suffix}`;
             this.applyFilters();
         });
@@ -683,6 +723,46 @@ class VideoFilter {
         // Save on change (when user releases slider)
         slider.addEventListener('change', () => {
             this.saveSettings();
+
+            // Special handling for Anime4K strength
+            if (settingKey === 'anime4kStrength' && this.anime4kRenderer) {
+                this.anime4kRenderer.setStrength(this.settings.anime4kStrength / 100);
+            }
+        });
+    }
+
+    private setupAnime4KModeSelector(): void {
+        const modeButtons = document.querySelectorAll('.anime4k-mode-btn');
+
+        // Set initial active state based on current mode
+        modeButtons.forEach(btn => {
+            const mode = btn.getAttribute('data-mode');
+            if (mode === this.settings.anime4kMode) {
+                btn.classList.add('active');
+            }
+        });
+
+        // Add click handlers
+        modeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.getAttribute('data-mode') as Anime4KMode;
+                if (!mode) return;
+
+                // Update UI
+                modeButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                // Update settings
+                this.settings.anime4kMode = mode;
+                this.saveSettings();
+
+                // Apply to renderer
+                if (this.anime4kRenderer) {
+                    this.anime4kRenderer.setMode(mode);
+                }
+
+                logger.info(`[VideoFilter] Anime4K mode changed to: ${mode}`);
+            });
         });
     }
 
@@ -721,6 +801,8 @@ class VideoFilter {
             edgeEnhance: PLAYER_DEFAULTS.VIDEO_FILTER_EDGE_ENHANCE,
             upscaleCAS: PLAYER_DEFAULTS.VIDEO_FILTER_UPSCALE_CAS,
             upscaleLanczos: PLAYER_DEFAULTS.VIDEO_FILTER_UPSCALE_LANCZOS,
+            anime4kMode: PLAYER_DEFAULTS.VIDEO_FILTER_ANIME4K_MODE as Anime4KMode,
+            anime4kStrength: PLAYER_DEFAULTS.VIDEO_FILTER_ANIME4K_STRENGTH,
         };
 
         // Update sliders
@@ -735,6 +817,18 @@ class VideoFilter {
         this.updateSlider('video-filter-edge-enhance', 'edge-enhance-value', this.settings.edgeEnhance, '%');
         this.updateSlider('video-filter-upscale-cas', 'upscale-cas-value', this.settings.upscaleCAS, '%');
         this.updateSlider('video-filter-upscale-lanczos', 'upscale-lanczos-value', this.settings.upscaleLanczos, '%');
+        this.updateSlider('video-filter-anime4k-strength', 'anime4k-strength-value', this.settings.anime4kStrength, '%');
+
+        // Reset Anime4K mode buttons
+        document.querySelectorAll('.anime4k-mode-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-mode') === 'off');
+        });
+
+        // Reset Anime4K renderer
+        if (this.anime4kRenderer) {
+            this.anime4kRenderer.setMode('off');
+            this.anime4kRenderer.setStrength(this.settings.anime4kStrength / 100);
+        }
 
         this.applyFilters();
         this.saveSettings();
@@ -790,6 +884,12 @@ class VideoFilter {
         logger.info('[VideoFilter] Cleaning up...');
 
         this.hidePopup();
+
+        // Cleanup Anime4K renderer
+        if (this.anime4kRenderer) {
+            this.anime4kRenderer.cleanup();
+            this.anime4kRenderer = null;
+        }
 
         document.getElementById('video-filter-container')?.remove();
         document.getElementById('video-filter-styles')?.remove();

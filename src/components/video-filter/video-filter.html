@@ -139,6 +139,37 @@
                    min="0" max="100" value="{{ upscaleLanczos }}" step="1">
             <div class="video-filter-hint">Smooth edges for animation/anime</div>
         </div>
+
+        <!-- Anime4K Section Divider -->
+        <div class="video-filter-section-divider">
+            <span>Anime4K Shaders</span>
+        </div>
+
+        <!-- Anime4K Mode Selector -->
+        <div class="video-filter-control anime4k-control">
+            <div class="video-filter-label">
+                <span>Mode</span>
+            </div>
+            <div class="anime4k-mode-selector" data-current-mode="{{ anime4kMode }}">
+                <button class="anime4k-mode-btn" data-mode="off" title="Disabled">OFF</button>
+                <button class="anime4k-mode-btn" data-mode="modeA" title="Line Restore - Fast">A</button>
+                <button class="anime4k-mode-btn" data-mode="modeAA" title="Line Restore x2 - Better">A+A</button>
+                <button class="anime4k-mode-btn" data-mode="modeB" title="Upscale - Perceptual">B</button>
+                <button class="anime4k-mode-btn" data-mode="modeBB" title="Upscale x2 - High Quality">B+B</button>
+                <button class="anime4k-mode-btn" data-mode="modeC" title="Combined - Best Quality">C</button>
+            </div>
+            <div class="video-filter-hint">WebGL shaders for anime upscaling</div>
+        </div>
+
+        <!-- Anime4K Strength -->
+        <div class="video-filter-control">
+            <div class="video-filter-label">
+                <span>Strength</span>
+                <span id="anime4k-strength-value" class="video-filter-value">{{ anime4kStrength }}%</span>
+            </div>
+            <input type="range" id="video-filter-anime4k-strength" class="video-filter-slider"
+                   min="0" max="100" value="{{ anime4kStrength }}" step="1">
+        </div>
     </div>
 </div>
 
@@ -391,6 +422,46 @@
         color: rgba(255, 255, 255, 0.4);
         margin-top: 4px;
         font-style: italic;
+    }
+
+    /* Anime4K Mode Selector */
+    .anime4k-mode-selector {
+        display: flex;
+        gap: 4px;
+        margin-top: 8px;
+    }
+
+    .anime4k-mode-btn {
+        flex: 1;
+        padding: 8px 4px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 6px;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .anime4k-mode-btn:hover {
+        background: rgba(255, 255, 255, 0.15);
+        color: white;
+    }
+
+    .anime4k-mode-btn.active {
+        background: linear-gradient(135deg, var(--vf-accent) 0%, var(--vf-accent-light) 100%);
+        border-color: var(--vf-accent);
+        color: white;
+        box-shadow: 0 2px 8px rgba(var(--vf-accent-rgb), 0.4);
+    }
+
+    .anime4k-mode-btn:active {
+        transform: scale(0.95);
+    }
+
+    .anime4k-control .video-filter-hint {
+        margin-top: 8px;
     }
 
     /* WebGL Canvas Overlay - positioned over video */

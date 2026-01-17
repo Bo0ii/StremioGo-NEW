@@ -108,6 +108,8 @@ export const STORAGE_KEYS = {
     VIDEO_FILTER_EDGE_ENHANCE: 'videoFilterEdgeEnhance',
     VIDEO_FILTER_UPSCALE_CAS: 'videoFilterUpscaleCAS',
     VIDEO_FILTER_UPSCALE_LANCZOS: 'videoFilterUpscaleLanczos',
+    VIDEO_FILTER_ANIME4K_MODE: 'videoFilterAnime4KMode',
+    VIDEO_FILTER_ANIME4K_STRENGTH: 'videoFilterAnime4KStrength',
     // Streaming performance settings
     STREAMING_PROFILE: 'streamingProfile',
     // Bundled addons installation tracking
@@ -217,6 +219,8 @@ export const PLAYER_DEFAULTS = {
     VIDEO_FILTER_EDGE_ENHANCE: 0,   // Range: 0-100 (0 = no edge enhancement)
     VIDEO_FILTER_UPSCALE_CAS: 0,    // Range: 0-100 (0 = off, AMD FSR-style contrast adaptive sharpening)
     VIDEO_FILTER_UPSCALE_LANCZOS: 0, // Range: 0-100 (0 = off, Lanczos-style for anime/animation)
+    VIDEO_FILTER_ANIME4K_MODE: 'off', // Modes: off, modeA, modeAA, modeB, modeBB, modeC
+    VIDEO_FILTER_ANIME4K_STRENGTH: 50, // Range: 0-100 (default 50%)
 } as const;
 
 // Playback speed options
