@@ -3316,6 +3316,19 @@ function setupPartyListeners(): void {
         updateTitleBarPartyState();
         updateNavPartyButtonState();
         removeFloatingPartyChatIcon();
+        // Reset stream sync state so next party session works correctly
+        lastSyncedStreamUrl = null;
+        logger.info('[Party] Reset lastSyncedStreamUrl on disconnect');
+    });
+
+    // When joining a new party, reset sync state
+    partyService.on('connected', () => {
+        lastSyncedStreamUrl = null;
+        logger.info('[Party] Reset lastSyncedStreamUrl on new connection');
+        // If already in player, initialize video sync for new party
+        if (location.hash.includes('#/player')) {
+            initPartyVideoSync();
+        }
     });
 
     // Expose partyService to window for plugins
@@ -3424,9 +3437,39 @@ function escapeHtml(text: string): string {
     return div.innerHTML;
 }
 
+// Track mouse activity for floating icon visibility
+let partyIconMouseTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function setPartyIconActive(active: boolean): void {
+    const wrapper = document.getElementById('party-floating-chat-icon');
+    if (wrapper) {
+        if (active) {
+            wrapper.classList.add('mouse-active');
+        } else {
+            wrapper.classList.remove('mouse-active');
+        }
+    }
+}
+
+function handlePartyIconMouseMove(): void {
+    if (!document.getElementById('party-floating-chat-icon')) return;
+
+    setPartyIconActive(true);
+
+    if (partyIconMouseTimeout) {
+        clearTimeout(partyIconMouseTimeout);
+    }
+
+    // Hide after 3 seconds of no mouse movement (matches video controls)
+    partyIconMouseTimeout = setTimeout(() => {
+        setPartyIconActive(false);
+    }, 3000);
+}
+
 /**
  * Create floating party chat icon for player view
  * Shows for ALL party members, not just host
+ * Visible when mouse active, fades when inactive
  */
 function createFloatingPartyChatIcon(): void {
     // Only show in player and when in party
@@ -3438,66 +3481,107 @@ function createFloatingPartyChatIcon(): void {
     // Already exists
     if (document.getElementById('party-floating-chat-icon')) return;
 
-    const icon = document.createElement('div');
-    icon.id = 'party-floating-chat-icon';
-    icon.title = 'Party Chat (Press C)';
-    icon.innerHTML = `
-        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-            <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
-        </svg>
-        <span class="party-chat-member-count">${partyService.room.members.length}</span>
-    `;
-    icon.style.cssText = `
+    // Create wrapper for proper badge positioning
+    const wrapper = document.createElement('div');
+    wrapper.id = 'party-floating-chat-icon';
+    wrapper.className = 'mouse-active'; // Start visible
+    wrapper.title = 'Party Chat (Press C)';
+    wrapper.style.cssText = `
         position: fixed;
         bottom: 100px;
         right: 20px;
-        width: 48px;
-        height: 48px;
-        background: rgba(0, 0, 0, 0.7);
-        backdrop-filter: blur(10px);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
         z-index: 999998;
-        color: #10b981;
-        transition: all 0.2s ease;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        cursor: pointer;
     `;
 
-    // Add styles for member count badge and hover
+    // Create the icon container
+    const icon = document.createElement('div');
+    icon.className = 'party-float-icon-inner';
+    icon.innerHTML = `
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+        </svg>
+    `;
+
+    // Create the badge (outside the icon container)
+    const badge = document.createElement('span');
+    badge.className = 'party-chat-member-count';
+    badge.textContent = partyService.room.members.length.toString();
+
+    wrapper.appendChild(icon);
+    wrapper.appendChild(badge);
+
+    // Add styles
     if (!document.getElementById('party-floating-icon-styles')) {
         const style = document.createElement('style');
         style.id = 'party-floating-icon-styles';
         style.textContent = `
-            #party-floating-chat-icon:hover {
-                background: rgba(16, 185, 129, 0.3);
-                transform: scale(1.1);
-            }
-            #party-floating-chat-icon .party-chat-member-count {
-                position: absolute;
-                top: -4px;
-                right: -4px;
-                background: #10b981;
-                color: white;
-                font-size: 10px;
-                font-weight: bold;
-                min-width: 18px;
-                height: 18px;
-                border-radius: 9px;
+            /* Inactive state (mouse not moving) - very subtle */
+            #party-floating-chat-icon .party-float-icon-inner {
+                width: 40px;
+                height: 40px;
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 50%;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                padding: 0 4px;
+                color: rgba(255, 255, 255, 0.15);
+                transition: all 0.4s ease;
+            }
+            #party-floating-chat-icon .party-chat-member-count {
+                position: absolute;
+                top: -2px;
+                right: -2px;
+                background: rgba(255, 255, 255, 0.1);
+                color: rgba(255, 255, 255, 0.3);
+                font-size: 9px;
+                font-weight: 600;
+                min-width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0 3px;
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                transition: all 0.4s ease;
+            }
+
+            /* Active state (mouse moving) - fully visible */
+            #party-floating-chat-icon.mouse-active .party-float-icon-inner {
+                background: rgba(255, 255, 255, 0.12);
+                color: rgba(255, 255, 255, 0.9);
+            }
+            #party-floating-chat-icon.mouse-active .party-chat-member-count {
+                background: rgba(255, 255, 255, 0.25);
+                color: rgba(255, 255, 255, 0.9);
+            }
+
+            /* Hover state - highlighted */
+            #party-floating-chat-icon:hover .party-float-icon-inner {
+                background: rgba(255, 255, 255, 0.2);
+                color: white;
+                transform: scale(1.05);
+            }
+            #party-floating-chat-icon:hover .party-chat-member-count {
+                background: rgba(255, 255, 255, 0.35);
+                color: rgba(255, 255, 255, 0.9);
             }
         `;
         document.head.appendChild(style);
     }
 
-    icon.addEventListener('click', toggleQuickChat);
-    document.body.appendChild(icon);
+    wrapper.addEventListener('click', toggleQuickChat);
+    document.body.appendChild(wrapper);
+
+    // Add mouse move listener for visibility
+    document.addEventListener('mousemove', handlePartyIconMouseMove);
+
+    // Start the timeout to fade out after 3 seconds
+    partyIconMouseTimeout = setTimeout(() => {
+        setPartyIconActive(false);
+    }, 3000);
+
     logger.info('[Party] Created floating chat icon');
 }
 
@@ -3508,6 +3592,12 @@ function removeFloatingPartyChatIcon(): void {
     const icon = document.getElementById('party-floating-chat-icon');
     if (icon) {
         icon.remove();
+        // Clean up mouse listener
+        document.removeEventListener('mousemove', handlePartyIconMouseMove);
+        if (partyIconMouseTimeout) {
+            clearTimeout(partyIconMouseTimeout);
+            partyIconMouseTimeout = null;
+        }
         logger.info('[Party] Removed floating chat icon');
     }
 }
