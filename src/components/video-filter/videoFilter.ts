@@ -338,17 +338,19 @@ class VideoFilter {
                 </filter>
 
                 <!-- ============ FAKE HDR FILTER ============ -->
-                <!-- HDR-like: expand dynamic range, boost contrast & saturation -->
+                <!-- HDR-like tone mapping: preserve shadows, lift mids & highlights, no clipping -->
                 <filter id="${this.hdrFilterId}" color-interpolation-filters="sRGB">
-                    <!-- Step 1: Slight contrast boost (reduced exposure) -->
-                    <feComponentTransfer in="SourceGraphic" result="hdr-contrast">
-                        <feFuncR type="linear" slope="1.08" intercept="-0.04"/>
-                        <feFuncG type="linear" slope="1.08" intercept="-0.04"/>
-                        <feFuncB type="linear" slope="1.08" intercept="-0.04"/>
+                    <!-- S-curve tone mapping: shadows preserved, moderate highlight lift -->
+                    <!-- Input:  0    0.1  0.2  0.3  0.4  0.5  0.6  0.7  0.8  0.9  1.0 -->
+                    <!-- Output: 0   0.09 0.18 0.29 0.41 0.54 0.67 0.79 0.88 0.95 1.0 -->
+                    <feComponentTransfer in="SourceGraphic" result="hdr-tonemapped">
+                        <feFuncR type="table" tableValues="0 0.09 0.18 0.29 0.41 0.54 0.67 0.79 0.88 0.95 1.0"/>
+                        <feFuncG type="table" tableValues="0 0.09 0.18 0.29 0.41 0.54 0.67 0.79 0.88 0.95 1.0"/>
+                        <feFuncB type="table" tableValues="0 0.09 0.18 0.29 0.41 0.54 0.67 0.79 0.88 0.95 1.0"/>
                     </feComponentTransfer>
 
-                    <!-- Step 2: Subtle saturation boost +6% -->
-                    <feColorMatrix type="saturate" values="1.06" in="hdr-contrast" result="hdr-final"/>
+                    <!-- Subtle saturation boost (+2%) -->
+                    <feColorMatrix type="saturate" values="1.02" in="hdr-tonemapped" result="hdr-final"/>
                 </filter>
 
                 <!-- ============ ANIME ENHANCE FILTER ============ -->
