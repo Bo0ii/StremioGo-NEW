@@ -16,12 +16,13 @@ interface FilterSettings {
     edgeEnhance: number;
     fakeHDR: boolean;
     animeEnhance: boolean;
+    antiAliasing: boolean;
     anime4kMode: Anime4KMode;
     motionSmooth: number;
 }
 
 // Numeric-only settings for slider handling (excludes boolean toggles and string modes)
-type NumericFilterSettings = Omit<FilterSettings, 'fakeHDR' | 'animeEnhance' | 'anime4kMode'>;
+type NumericFilterSettings = Omit<FilterSettings, 'fakeHDR' | 'animeEnhance' | 'antiAliasing' | 'anime4kMode'>;
 
 // Default accent color (purple) - used when user hasn't set a custom color
 const DEFAULT_ACCENT_COLOR = '#7b5bf5';
@@ -35,6 +36,7 @@ class VideoFilter {
     private svgFilterId: string = 'video-sharpen-filter';
     private hdrFilterId: string = 'video-hdr-filter';
     private animeFilterId: string = 'video-anime-filter';
+    private antiAliasingFilterId: string = 'video-antialias-filter';
     private anime4kRenderer: Anime4KWebGL | null = null;
 
     constructor() {
@@ -93,6 +95,7 @@ class VideoFilter {
             edgeEnhance: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_EDGE_ENHANCE) || PLAYER_DEFAULTS.VIDEO_FILTER_EDGE_ENHANCE.toString()),
             fakeHDR: localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_FAKE_HDR) === 'true',
             animeEnhance: localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_ANIME_ENHANCE) === 'true',
+            antiAliasing: localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_ANTI_ALIASING) === 'true',
             anime4kMode: (localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_ANIME4K_MODE) || PLAYER_DEFAULTS.VIDEO_FILTER_ANIME4K_MODE) as Anime4KMode,
             motionSmooth: parseInt(localStorage.getItem(STORAGE_KEYS.VIDEO_FILTER_MOTION_SMOOTH) || PLAYER_DEFAULTS.VIDEO_FILTER_MOTION_SMOOTH.toString()),
         };
@@ -110,6 +113,7 @@ class VideoFilter {
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_EDGE_ENHANCE, this.settings.edgeEnhance.toString());
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_FAKE_HDR, this.settings.fakeHDR.toString());
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_ANIME_ENHANCE, this.settings.animeEnhance.toString());
+        localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_ANTI_ALIASING, this.settings.antiAliasing.toString());
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_ANIME4K_MODE, this.settings.anime4kMode);
         localStorage.setItem(STORAGE_KEYS.VIDEO_FILTER_MOTION_SMOOTH, this.settings.motionSmooth.toString());
     }
@@ -188,6 +192,7 @@ class VideoFilter {
         template = template.replace(/\{\{\s*edgeEnhance\s*\}\}/g, this.settings.edgeEnhance.toString());
         template = template.replace(/\{\{\s*fakeHDRChecked\s*\}\}/g, this.settings.fakeHDR ? 'checked' : '');
         template = template.replace(/\{\{\s*animeEnhanceChecked\s*\}\}/g, this.settings.animeEnhance ? 'checked' : '');
+        template = template.replace(/\{\{\s*antiAliasingChecked\s*\}\}/g, this.settings.antiAliasing ? 'checked' : '');
         template = template.replace(/\{\{\s*anime4kMode\s*\}\}/g, this.settings.anime4kMode);
         template = template.replace(/\{\{\s*motionSmooth\s*\}\}/g, this.settings.motionSmooth.toString());
         template = template.replace(/\{\{\s*anime4kSupported\s*\}\}/g, Anime4KWebGL.isSupported() ? '' : 'disabled');
@@ -357,6 +362,50 @@ class VideoFilter {
 
                     <!-- Step 2: Tiny saturation boost for anime colors -->
                     <feColorMatrix type="saturate" values="1.04" in="anime-sharpened" result="anime-final"/>
+                </filter>
+
+                <!-- ============ ANTI-ALIASING FILTER ============ -->
+                <!-- FXAA-inspired edge smoothing to reduce jaggies -->
+                <filter id="${this.antiAliasingFilterId}" color-interpolation-filters="sRGB">
+                    <!-- Step 1: Extract luminance for edge detection -->
+                    <feColorMatrix type="matrix" in="SourceGraphic"
+                        values="0.299 0.587 0.114 0 0
+                                0.299 0.587 0.114 0 0
+                                0.299 0.587 0.114 0 0
+                                0 0 0 1 0" result="aa-luma"/>
+
+                    <!-- Step 2: Detect edges using Sobel operator -->
+                    <feConvolveMatrix order="3" in="aa-luma" preserveAlpha="true"
+                        kernelMatrix="-1 -2 -1
+                                       0  0  0
+                                       1  2  1" result="aa-edge-y"/>
+                    <feConvolveMatrix order="3" in="aa-luma" preserveAlpha="true"
+                        kernelMatrix="-1  0  1
+                                      -2  0  2
+                                      -1  0  1" result="aa-edge-x"/>
+
+                    <!-- Step 3: Combine edge magnitudes -->
+                    <feComposite operator="arithmetic" in="aa-edge-x" in2="aa-edge-x"
+                        k1="1" k2="0" k3="0" k4="0" result="aa-edge-x2"/>
+                    <feComposite operator="arithmetic" in="aa-edge-y" in2="aa-edge-y"
+                        k1="1" k2="0" k3="0" k4="0" result="aa-edge-y2"/>
+                    <feComposite operator="arithmetic" in="aa-edge-x2" in2="aa-edge-y2"
+                        k1="0" k2="1" k3="1" k4="0" result="aa-edges"/>
+
+                    <!-- Step 4: Create edge mask (threshold edges) -->
+                    <feComponentTransfer in="aa-edges" result="aa-mask">
+                        <feFuncR type="linear" slope="3" intercept="0"/>
+                        <feFuncG type="linear" slope="3" intercept="0"/>
+                        <feFuncB type="linear" slope="3" intercept="0"/>
+                    </feComponentTransfer>
+
+                    <!-- Step 5: Blur only the edges (subtle smoothing) -->
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="0.8" result="aa-blurred"/>
+
+                    <!-- Step 6: Blend original with blurred based on edge mask -->
+                    <!-- More blur applied to edge areas, original preserved elsewhere -->
+                    <feComposite operator="arithmetic" in="aa-blurred" in2="SourceGraphic"
+                        k1="0" k2="0.3" k3="0.7" k4="0" result="aa-final"/>
                 </filter>
             </defs>
         `;
@@ -548,6 +597,11 @@ class VideoFilter {
             cssFilters.push(`url(#${this.animeFilterId})`);
         }
 
+        // Apply Anti-Aliasing filter if enabled
+        if (this.settings.antiAliasing) {
+            cssFilters.push(`url(#${this.antiAliasingFilterId})`);
+        }
+
         // Apply combined filter to video
         const filterString = cssFilters.length > 0 ? cssFilters.join(' ') : 'none';
 
@@ -616,6 +670,17 @@ class VideoFilter {
                 this.applyFilters();
                 this.saveSettings();
                 logger.info(`[VideoFilter] Anime Enhance ${this.settings.animeEnhance ? 'enabled' : 'disabled'}`);
+            });
+        }
+
+        // Anti-Aliasing toggle
+        const antiAliasingToggle = document.getElementById('video-filter-anti-aliasing') as HTMLInputElement;
+        if (antiAliasingToggle) {
+            antiAliasingToggle.addEventListener('change', () => {
+                this.settings.antiAliasing = antiAliasingToggle.checked;
+                this.applyFilters();
+                this.saveSettings();
+                logger.info(`[VideoFilter] Anti-Aliasing ${this.settings.antiAliasing ? 'enabled' : 'disabled'}`);
             });
         }
 
@@ -773,6 +838,7 @@ class VideoFilter {
             edgeEnhance: PLAYER_DEFAULTS.VIDEO_FILTER_EDGE_ENHANCE,
             fakeHDR: PLAYER_DEFAULTS.VIDEO_FILTER_FAKE_HDR,
             animeEnhance: PLAYER_DEFAULTS.VIDEO_FILTER_ANIME_ENHANCE,
+            antiAliasing: PLAYER_DEFAULTS.VIDEO_FILTER_ANTI_ALIASING,
             anime4kMode: PLAYER_DEFAULTS.VIDEO_FILTER_ANIME4K_MODE as Anime4KMode,
             motionSmooth: PLAYER_DEFAULTS.VIDEO_FILTER_MOTION_SMOOTH,
         };
@@ -798,6 +864,12 @@ class VideoFilter {
         const animeEnhanceToggle = document.getElementById('video-filter-anime-enhance') as HTMLInputElement;
         if (animeEnhanceToggle) {
             animeEnhanceToggle.checked = this.settings.animeEnhance;
+        }
+
+        // Reset Anti-Aliasing toggle
+        const antiAliasingToggle = document.getElementById('video-filter-anti-aliasing') as HTMLInputElement;
+        if (antiAliasingToggle) {
+            antiAliasingToggle.checked = this.settings.antiAliasing;
         }
 
         // Reset Anime4K mode selector

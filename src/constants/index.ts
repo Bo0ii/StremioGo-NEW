@@ -108,6 +108,7 @@ export const STORAGE_KEYS = {
     VIDEO_FILTER_EDGE_ENHANCE: 'videoFilterEdgeEnhance',
     VIDEO_FILTER_FAKE_HDR: 'videoFilterFakeHDR',
     VIDEO_FILTER_ANIME_ENHANCE: 'videoFilterAnimeEnhance',
+    VIDEO_FILTER_ANTI_ALIASING: 'videoFilterAntiAliasing',
     VIDEO_FILTER_ANIME4K_MODE: 'videoFilterAnime4KMode',
     VIDEO_FILTER_MOTION_SMOOTH: 'videoFilterMotionSmooth',
     // Streaming performance settings
@@ -219,6 +220,7 @@ export const PLAYER_DEFAULTS = {
     VIDEO_FILTER_EDGE_ENHANCE: 0,   // Range: 0-100 (0 = no edge enhancement)
     VIDEO_FILTER_FAKE_HDR: false,   // Boolean toggle for HDR-like tone mapping effect
     VIDEO_FILTER_ANIME_ENHANCE: false, // Boolean toggle for anime line art enhancement
+    VIDEO_FILTER_ANTI_ALIASING: false, // Boolean toggle for FXAA-style edge smoothing
     VIDEO_FILTER_ANIME4K_MODE: 'off', // Anime4K WebGL mode: off, modeA, modeB, modeC, modeAHQ, modeBHQ, modeCHQ
     VIDEO_FILTER_MOTION_SMOOTH: 0, // Range: 0-100 (0 = off, motion smoothing/frame blending)
 } as const;
