@@ -1,5 +1,6 @@
 import { join, basename } from "path";
-import { mkdirSync, existsSync, writeFileSync, unlinkSync } from "fs";
+import { mkdirSync, existsSync, writeFileSync, unlinkSync, readdirSync } from "fs";
+import { execSync } from "child_process";
 import helpers from './utils/Helpers';
 import Updater from "./core/Updater";
 import Properties from "./core/Properties";
@@ -53,6 +54,43 @@ function getDisplayRefreshRate(): number {
     }
 }
 
+// Detect if running on a laptop (has battery) vs desktop
+function isLaptop(): boolean {
+    try {
+        if (process.platform === 'darwin') {
+            // macOS: Check if battery exists using pmset
+            const result = execSync('pmset -g batt 2>/dev/null', { encoding: 'utf8', timeout: 2000 });
+            // If "InternalBattery" is found, it's a laptop (MacBook)
+            // Mac Mini, Mac Pro, iMac don't have internal batteries
+            return result.includes('InternalBattery');
+        } else if (process.platform === 'win32') {
+            // Windows: Check for battery using WMIC
+            const result = execSync('WMIC Path Win32_Battery Get BatteryStatus 2>nul', { encoding: 'utf8', timeout: 2000 });
+            // If we get battery status data (not just headers), it's a laptop
+            const lines = result.trim().split('\n').filter(line => line.trim());
+            return lines.length > 1; // More than just header = has battery
+        } else if (process.platform === 'linux') {
+            // Linux: Check /sys/class/power_supply for battery
+            const powerSupplyPath = '/sys/class/power_supply';
+            if (existsSync(powerSupplyPath)) {
+                const supplies = readdirSync(powerSupplyPath);
+                return supplies.some(supply =>
+                    supply.toLowerCase().includes('bat') ||
+                    supply.toLowerCase().includes('battery')
+                );
+            }
+        }
+    } catch (err) {
+        logger.warn(`[DeviceDetection] Could not determine device type: ${err}`);
+    }
+    // Default to desktop (use aggressive flags) if detection fails
+    return false;
+}
+
+const isLaptopDevice = isLaptop();
+logger.info(`[DeviceDetection] Device type: ${isLaptopDevice ? 'LAPTOP' : 'DESKTOP'}`);
+
+
 // Platform-specific rendering backend
 if (process.platform === "darwin") {
     logger.info("Running on macOS, using Metal for rendering");
@@ -68,51 +106,72 @@ if (process.platform === "darwin") {
 }
 
 // ============================================
-// PERFORMANCE FLAGS - Full set from working version
+// PERFORMANCE FLAGS - Adaptive based on device type
+// Desktop: Aggressive flags for max performance
+// Laptop: Conservative flags for battery/thermal efficiency
 // ============================================
 
-// Force GPU acceleration
+// Common GPU acceleration (both laptop and desktop)
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('disable-software-rasterizer');
-
-// Use discrete GPU
-app.commandLine.appendSwitch('force-high-performance-gpu');
-
-// Unlock frame rate for smooth animations
-app.commandLine.appendSwitch('disable-frame-rate-limit');
-app.commandLine.appendSwitch('disable-gpu-vsync');
-
-// Core rendering pipeline
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('enable-gpu-compositing');
 app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
 app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
-
-// Rasterization optimizations
 app.commandLine.appendSwitch('enable-oop-rasterization');
 app.commandLine.appendSwitch('canvas-oop-rasterization');
-app.commandLine.appendSwitch('in-process-gpu');
-app.commandLine.appendSwitch('num-raster-threads', '4');
-
-// Hardware overlays and raw draw
-app.commandLine.appendSwitch('enable-hardware-overlays', 'single-fullscreen,single-on-top,underlay');
-app.commandLine.appendSwitch('enable-raw-draw');
-
-// Quality settings
-app.commandLine.appendSwitch('disable-composited-antialiasing');
-app.commandLine.appendSwitch('gpu-rasterization-msaa-sample-count', '0');
-
-// High DPI and timing
 app.commandLine.appendSwitch('high-dpi-support', '1');
-app.commandLine.appendSwitch('enable-highres-timer');
 
-// Keep renderer active and prevent throttling
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
-app.commandLine.appendSwitch('disable-hang-monitor');
+if (isLaptopDevice) {
+    // ============================================
+    // LAPTOP MODE: Conservative for battery & thermals
+    // ============================================
+    logger.info("[Performance] Using LAPTOP mode - VSync enabled, frame rate limited");
 
-logger.info("Full performance GPU flags enabled");
+    // Let system manage GPU (don't force discrete)
+    // VSync ON - limits to display refresh rate (60/120Hz)
+    // Frame rate limiter ON - no wasted frames
+
+    // Moderate rasterization
+    app.commandLine.appendSwitch('num-raster-threads', '2');
+
+    // Keep renderer active but allow some throttling
+    app.commandLine.appendSwitch('disable-renderer-backgrounding');
+
+} else {
+    // ============================================
+    // DESKTOP MODE: Aggressive for max performance
+    // ============================================
+    logger.info("[Performance] Using DESKTOP mode - VSync disabled, unlimited frame rate");
+
+    // Force discrete GPU for max performance
+    app.commandLine.appendSwitch('force-high-performance-gpu');
+
+    // Unlock frame rate for smooth animations
+    app.commandLine.appendSwitch('disable-frame-rate-limit');
+    app.commandLine.appendSwitch('disable-gpu-vsync');
+
+    // Aggressive rasterization
+    app.commandLine.appendSwitch('in-process-gpu');
+    app.commandLine.appendSwitch('num-raster-threads', '4');
+
+    // Hardware overlays and raw draw
+    app.commandLine.appendSwitch('enable-hardware-overlays', 'single-fullscreen,single-on-top,underlay');
+    app.commandLine.appendSwitch('enable-raw-draw');
+
+    // Quality settings
+    app.commandLine.appendSwitch('disable-composited-antialiasing');
+    app.commandLine.appendSwitch('gpu-rasterization-msaa-sample-count', '0');
+
+    // High precision timing
+    app.commandLine.appendSwitch('enable-highres-timer');
+
+    // Keep renderer fully active
+    app.commandLine.appendSwitch('disable-renderer-backgrounding');
+    app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+    app.commandLine.appendSwitch('disable-hang-monitor');
+}
 
 // HEVC/H.265 hardware decoding support
 if (process.platform === "win32") {

@@ -114,7 +114,7 @@ export class Anime4KWebGL {
             width: 100%;
             height: 100%;
             pointer-events: none;
-            z-index: 1;
+            z-index: 0;
             display: none;
         `;
 
@@ -181,6 +181,13 @@ export class Anime4KWebGL {
             return;
         }
 
+        // Wait for video to have valid dimensions
+        if (this.video.videoWidth === 0 || this.video.videoHeight === 0) {
+            logger.info('[Anime4KWebGL] Waiting for video metadata...');
+            this.video.addEventListener('loadedmetadata', () => this.start(), { once: true });
+            return;
+        }
+
         try {
             // Clean up existing upscaler
             if (this.upscaler) {
@@ -188,21 +195,47 @@ export class Anime4KWebGL {
                 this.upscaler = null;
             }
 
-            // Get the preset for current mode (cast to expected type for VideoUpscaler)
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const preset = MODE_PRESETS[this.currentMode] as any;
+            // Ensure canvas has proper dimensions before starting WebGL
+            this.updateCanvasSize();
 
-            // Create new upscaler
-            this.upscaler = new Anime4KJS.VideoUpscaler(this.targetFPS, preset);
-            this.upscaler.attachVideo(this.video, this.canvas);
-            this.upscaler.start();
+            // Verify canvas has valid dimensions
+            if (this.canvas.width === 0 || this.canvas.height === 0) {
+                logger.warn('[Anime4KWebGL] Canvas still has zero dimensions, using fallback');
+                this.canvas.width = 1920;
+                this.canvas.height = 1080;
+            }
 
-            // Show canvas and hide video
+            // Show canvas BEFORE creating WebGL context (required for some browsers)
             this.canvas.style.display = 'block';
-            this.video.style.opacity = '0';
 
-            this.isRunning = true;
-            logger.info(`[Anime4KWebGL] Started with mode: ${this.currentMode}, FPS: ${this.targetFPS}`);
+            // Use requestAnimationFrame to ensure canvas is rendered before WebGL starts
+            requestAnimationFrame(() => {
+                if (!this.video || !this.canvas) return;
+
+                try {
+                    // Get the preset for current mode (cast to expected type for VideoUpscaler)
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const preset = MODE_PRESETS[this.currentMode] as any;
+
+                    // Create new upscaler
+                    this.upscaler = new Anime4KJS.VideoUpscaler(this.targetFPS, preset);
+                    this.upscaler.attachVideo(this.video, this.canvas);
+                    this.upscaler.start();
+
+                    // Hide video (but keep subtitles visible)
+                    this.video.style.opacity = '0';
+
+                    // Ensure subtitle containers appear above the canvas
+                    this.ensureSubtitlesVisible();
+
+                    this.isRunning = true;
+                    logger.info(`[Anime4KWebGL] Started with mode: ${this.currentMode}, FPS: ${this.targetFPS}, Canvas: ${this.canvas.width}x${this.canvas.height}`);
+                } catch (err) {
+                    logger.error(`[Anime4KWebGL] Failed to start upscaler: ${err}`);
+                    this.isRunning = false;
+                    this.canvas!.style.display = 'none';
+                }
+            });
         } catch (err) {
             logger.error(`[Anime4KWebGL] Failed to start: ${err}`);
             this.isRunning = false;
@@ -230,8 +263,69 @@ export class Anime4KWebGL {
             this.video.style.opacity = '1';
         }
 
+        // Remove subtitle fix
+        this.removeSubtitleFix();
+
         this.isRunning = false;
         logger.info('[Anime4KWebGL] Stopped');
+    }
+
+    /**
+     * Update canvas dimensions to match video
+     */
+    private updateCanvasSize(): void {
+        if (!this.video || !this.canvas) return;
+
+        // Get video dimensions
+        const videoWidth = this.video.videoWidth || this.video.clientWidth || 1920;
+        const videoHeight = this.video.videoHeight || this.video.clientHeight || 1080;
+
+        // Set canvas pixel dimensions (required for WebGL)
+        this.canvas.width = videoWidth;
+        this.canvas.height = videoHeight;
+
+        logger.info(`[Anime4KWebGL] Canvas size set to ${videoWidth}x${videoHeight}`);
+    }
+
+    /**
+     * Ensure subtitle containers appear above the canvas
+     */
+    private ensureSubtitlesVisible(): void {
+        // Add a style element to boost subtitle z-index
+        let styleEl = document.getElementById('anime4k-subtitle-fix');
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'anime4k-subtitle-fix';
+            document.head.appendChild(styleEl);
+        }
+
+        styleEl.textContent = `
+            /* Ensure subtitles appear above Anime4K canvas */
+            [class*="subtitle"],
+            [class*="Subtitle"],
+            [class*="caption"],
+            [class*="Caption"],
+            .vtt-container,
+            .text-track-container {
+                z-index: 2 !important;
+                position: relative !important;
+            }
+
+            /* For native video subtitles - style the cue */
+            video::cue {
+                background: rgba(0, 0, 0, 0.8);
+                color: white;
+            }
+        `;
+
+        logger.info('[Anime4KWebGL] Subtitle visibility fix applied');
+    }
+
+    /**
+     * Remove subtitle fix styles
+     */
+    private removeSubtitleFix(): void {
+        document.getElementById('anime4k-subtitle-fix')?.remove();
     }
 
     /**
@@ -246,6 +340,7 @@ export class Anime4KWebGL {
      */
     public cleanup(): void {
         this.stop();
+        this.removeSubtitleFix();
         this.canvas?.remove();
         this.canvas = null;
         this.video = null;
