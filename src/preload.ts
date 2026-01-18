@@ -1,4 +1,4 @@
-import { ipcRenderer } from "electron";
+import { ipcRenderer, shell } from "electron";
 import { existsSync } from "fs";
 import { readdir } from "fs/promises";
 import Settings from "./core/Settings";
@@ -438,6 +438,76 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
         }, { once: true });
     }
 }
+
+// ============================================
+// EXPOSE WINDOW FUNCTIONS FOR PLUS PAGE
+// These functions are called by the Plus page UI components
+// ============================================
+
+// Get app version
+(window as any).getAppVersion = (): string => {
+    return Updater.getCurrentVersion();
+};
+
+// Check for updates (with user feedback)
+(window as any).checkForUpdates = (): void => {
+    Updater.checkForUpdates(true);
+};
+
+// Apply UI tweaks
+(window as any).applyTweaks = (): void => {
+    applyTweaks();
+};
+
+// Apply appearance settings
+(window as any).applyAppearance = (): void => {
+    applyUserAppearance();
+};
+
+// Toggle Discord Rich Presence
+(window as any).toggleDiscordRPC = (): void => {
+    const isEnabled = localStorage.getItem(STORAGE_KEYS.DISCORD_RPC) === "true";
+    if (isEnabled) {
+        DiscordPresence.start();
+        DiscordPresence.discordRPCHandler();
+    } else {
+        DiscordPresence.stop();
+    }
+};
+
+// Toggle window transparency
+(window as any).toggleTransparency = (): void => {
+    const isEnabled = localStorage.getItem('enableTransparentThemes') === 'true';
+    ipcRenderer.send(IPC_CHANNELS.SET_TRANSPARENCY, isEnabled);
+};
+
+// Open themes folder
+(window as any).openThemesFolder = (): void => {
+    shell.openPath(properties.themesPath);
+};
+
+// Open plugins folder
+(window as any).openPluginsFolder = (): void => {
+    shell.openPath(properties.pluginsPath);
+};
+
+// Browse for external player path
+(window as any).browsePlayerPath = async (): Promise<void> => {
+    const result = await ipcRenderer.invoke(IPC_CHANNELS.BROWSE_PLAYER_PATH);
+    if (result) {
+        localStorage.setItem(STORAGE_KEYS.EXTERNAL_PLAYER_PATH, result);
+        // Update the input field if it exists
+        const input = document.getElementById('plus-externalPlayerPath') as HTMLInputElement;
+        if (input) {
+            input.value = result;
+        }
+    }
+};
+
+// Open community marketplace (GitHub registry)
+(window as any).openCommunityMarketplace = (): void => {
+    shell.openExternal('https://github.com/REVENGE977/stremio-enhanced-registry');
+};
 
 // Initialize core functionality as soon as DOM is ready (faster than window.load)
 function initializeCoreFeatures(): void {
