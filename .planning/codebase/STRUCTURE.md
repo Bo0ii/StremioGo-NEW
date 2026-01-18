@@ -5,7 +5,7 @@
 ## Directory Layout
 
 ```
-StremioGo-NEW/
+StreamGo/
 ├── src/                          # Source TypeScript code
 │   ├── main.ts                   # Electron main process entry
 │   ├── preload.ts                # Renderer initialization & UI injection
